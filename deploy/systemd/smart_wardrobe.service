@@ -1,0 +1,31 @@
+[Unit]
+Description=Smart Wardrobe Outfit System
+After=network.target
+Wants=network.target
+
+[Service]
+Type=exec
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/smart-wardrobe
+Environment=PATH=/home/pi/smart-wardrobe/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=/home/pi/smart-wardrobe/.env
+ExecStart=/home/pi/smart-wardrobe/venv/bin/uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 2
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smart-wardrobe
+
+# Resource limits for Raspberry Pi
+MemoryLimit=1G
+CPUQuota=80%
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/pi/smart-wardrobe/data /home/pi/smart-wardrobe/.env
+
+[Install]
+WantedBy=multi-user.target

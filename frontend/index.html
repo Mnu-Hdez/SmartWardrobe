@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Smart Wardrobe - Outfit System</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Visualization Panel (60%) -->
+        <div class="panel visualization-panel" id="visualizationPanel">
+            <header class="panel-header">
+                <h1 class="panel-title">Visualización de Outfit</h1>
+                <div class="panel-controls">
+                    <button class="icon-btn" id="refreshBtn" aria-label="Generar nuevo outfit">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                    </button>
+                    <select class="icon-btn" id="occasionSelect" aria-label="Ocasión">
+                        <option value="casual">Casual</option>
+                        <option value="work">Trabajo</option>
+                        <option value="party">Fiesta</option>
+                        <option value="date">Cita</option>
+                        <option value="formal">Formal</option>
+                        <option value="wedding">Boda</option>
+                    </select>
+                </div>
+            </header>
+            
+            <main class="visualization-content">
+                <div class="outfit-display" id="outfitDisplay">
+                    <div class="outfit-loading" id="outfitLoading">
+                        <div class="spinner"></div>
+                        <p>Generando recomendaciones...</p>
+                    </div>
+                    
+                    <div class="outfit-result hidden" id="outfitResult">
+                        <div class="outfit-header">
+                            <h2 class="outfit-name" id="outfitName">Outfit Sugerido</h2>
+                            <div class="outfit-score" id="outfitScore">
+                                <span class="score-value">85</span>
+                                <span class="score-label">/100</span>
+                            </div>
+                        </div>
+                        
+                        <div class="outfit-garments" id="outfitGarments">
+                            <!-- Garment cards will be inserted here -->
+                        </div>
+                        
+                        <div class="outfit-description" id="outfitDescription">
+                            <p>Descripción del outfit generada por IA...</p>
+                        </div>
+                        
+                        <div class="outfit-tips" id="outfitTips">
+                            <h3>Consejos de estilo:</h3>
+                            <ul id="tipsList"></ul>
+                        </div>
+                        
+                        <div class="outfit-feedback">
+                            <button class="feedback-btn like-btn" data-rating="1" aria-label="Me gusta">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                                </svg>
+                                <span class="feedback-count" id="likeCount">0</span>
+                            </button>
+                            <button class="feedback-btn dislike-btn" data-rating="-1" aria-label="No me gusta">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                                </svg>
+                                <span class="feedback-count" id="dislikeCount">0</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="outfit-empty hidden" id="outfitEmpty">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        <h3>No hay prendas suficientes</h3>
+                        <p>Agrega al menos 2 prendas a tu armario para generar outfits</p>
+                        <button class="btn btn-primary" onclick="navigateToWardrobe()">Ir al Armario</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+        
+        <!-- Touch Control Panel (40%) -->
+        <div class="panel touch-panel" id="touchPanel">
+            <header class="panel-header">
+                <h1 class="panel-title">Panel de Control</h1>
+            </header>
+            
+            <main class="touch-content">
+                <!-- Occasion Presets -->
+                <section class="touch-section">
+                    <h2 class="section-title">Ocasión</h2>
+                    <div class="occasion-grid" id="occasionGrid">
+                        <button class="occasion-btn touch-target active" data-occasion="casual" aria-label="Casual">
+                            <svg class="occasion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                            <span>Casual</span>
+                        </button>
+                        <button class="occasion-btn touch-target" data-occasion="work" aria-label="Trabajo">
+                            <svg class="occasion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                <path d="M8 21h8"></path>
+                                <path d="M12 17v4"></path>
+                            </svg>
+                            <span>Trabajo</span>
+                        </button>
+                        <button class="occasion-btn touch-target" data-occasion="party" aria-label="Fiesta">
+                            <svg class="occasion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                            </svg>
+                            <span>Fiesta</span>
+                        </button>
+                        <button class="occasion-btn touch-target" data-occasion="date" aria-label="Cita">
+                            <svg class="occasion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                            </svg>
+                            <span>Cita</span>
+                        </button>
+                        <button class="occasion-btn touch-target" data-occasion="formal" aria-label="Formal">
+                            <svg class="occasion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                            <span>Formal</span>
+                        </button>
+                        <button class="occasion-btn touch-target" data-occasion="wedding" aria-label="Boda">
+                            <svg class="occasion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+                            </svg>
+                            <span>Boda</span>
+                        </button>
+                    </div>
+                </section>
+                
+                <!-- Season Selector -->
+                <section class="touch-section">
+                    <h2 class="section-title">Temporada</h2>
+                    <div class="season-grid" id="seasonGrid">
+                        <button class="season-btn touch-target active" data-season="all_season" aria-label="Todas las temporadas">
+                            <svg class="season-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                            </svg>
+                            <span>Todas</span>
+                        </button>
+                        <button class="season-btn touch-target" data-season="spring" aria-label="Primavera">
+                            <svg class="season-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2v4"></path>
+                                <path d="M12 18v4"></path>
+                                <path d="M4.93 4.93l2.83 2.83"></path>
+                                <path d="M16.24 16.24l2.83 2.83"></path>
+                                <path d="M2 12h4"></path>
+                                <path d="M18 12h4"></path>
+                                <path d="M4.93 19.07l2.83-2.83"></path>
+                                <path d="M16.24 7.76l2.83-2.83"></path>
+                            </svg>
+                            <span>Primavera</span>
+                        </button>
+                        <button class="season-btn touch-target" data-season="summer" aria-label="Verano">
+                            <svg class="season-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="5"></circle>
+                                <path d="M12 1v2"></path>
+                                <path d="M12 21v2"></path>
+                                <path d="M4.22 4.22l1.42 1.42"></path>
+                                <path d="M18.36 18.36l1.42 1.42"></path>
+                                <path d="M1 12h2"></path>
+                                <path d="M21 12h2"></path>
+                                <path d="M4.22 19.78l1.42-1.42"></path>
+                                <path d="M18.36 5.64l1.42-1.42"></path>
+                            </svg>
+                            <span>Verano</span>
+                        </button>
+                        <button class="season-btn touch-target" data-season="autumn" aria-label="Otoño">
+                            <svg class="season-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2v4"></path>
+                                <path d="M12 18v4"></path>
+                                <path d="M4.93 4.93l2.83 2.83"></path>
+                                <path d="M16.24 16.24l2.83 2.83"></path>
+                                <path d="M2 12h4"></path>
+                                <path d="M18 12h4"></path>
+                                <path d="M4.93 19.07l2.83-2.83"></path>
+                                <path d="M16.24 7.76l2.83-2.83"></path>
+                            </svg>
+                            <span>Otoño</span>
+                        </button>
+                        <button class="season-btn touch-target" data-season="winter" aria-label="Invierno">
+                            <svg class="season-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 15.25"></path>
+                                <path d="M16 13h4"></path>
+                                <path d="M18 11v4"></path>
+                            </svg>
+                            <span>Invierno</span>
+                        </button>
+                    </div>
+                </section>
+                
+                <!-- Action Buttons -->
+                <section class="touch-section">
+                    <h2 class="section-title">Acciones</h2>
+                    <div class="action-grid">
+                        <button class="action-btn touch-target primary" id="generateBtn" aria-label="Generar outfit">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                                <path d="M2 17l10 5 10-5"></path>
+                                <path d="M2 12l10 5 10-5"></path>
+                            </svg>
+                            <span>Generar Outfit</span>
+                        </button>
+                        <button class="action-btn touch-target secondary" id="packingBtn" aria-label="Modo maleta">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                                <line x1="3" y1="6" x2="21" y2="6"></line>
+                                <path d="M16 10a4 4 0 0 1-8 0"></path>
+                            </svg>
+                            <span>Modo Maleta</span>
+                        </button>
+                        <button class="action-btn touch-target" id="wardrobeBtn" aria-label="Ver armario">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                            <span>Mi Armario</span>
+                        </button>
+                        <button class="action-btn touch-target" id="settingsBtn" aria-label="Ajustes">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                            </svg>
+                            <span>Ajustes</span>
+                        </button>
+                    </div>
+                </section>
+                
+                <!-- Wardrobe Stats -->
+                <section class="touch-section">
+                    <h2 class="section-title">Estadísticas</h2>
+                    <div class="stats-grid" id="statsGrid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalGarments">0</div>
+                            <div class="stat-label">Prendas totales</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalOutfits">0</div>
+                            <div class="stat-label">Outfits creados</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avgScore">0</div>
+                            <div class="stat-label">Score promedio</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="favorites">0</div>
+                            <div class="stat-label">Favoritas</div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+    
+    <!-- Modals -->
+    <div class="modal hidden" id="packingModal" role="dialog" aria-labelledby="packingTitle" aria-modal="true">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="packingTitle">Modo Maleta</h2>
+                <button class="modal-close" id="closePackingModal" aria-label="Cerrar">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </header>
+            <div class="modal-body">
+                <form id="packingForm">
+                    <div class="form-group">
+                        <label for="packingDays">Días de viaje</label>
+                        <input type="number" id="packingDays" min="1" max="30" value="3" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="packingOccasion">Ocasión principal</label>
+                        <select id="packingOccasion">
+                            <option value="travel">Viaje</option>
+                            <option value="business">Negocios</option>
+                            <option value="casual">Casual</option>
+                            <option value="formal">Formal</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="packingSeason">Temporada</label>
+                        <select id="packingSeason">
+                            <option value="all_season">Todas</option>
+                            <option value="spring">Primavera</option>
+                            <option value="summer">Verano</option>
+                            <option value="autumn">Otoño</option>
+                            <option value="winter">Invierno</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="packingMaxItems">Máximo de prendas</label>
+                        <input type="number" id="packingMaxItems" min="5" max="30" value="15" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelPacking">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Generar Plan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal hidden" id="packingResultModal" role="dialog" aria-labelledby="packingResultTitle" aria-modal="true">
+        <div class="modal-overlay"></div>
+        <div class="modal-content large">
+            <header class="modal-header">
+                <h2 id="packingResultTitle">Plan de Maleta</h2>
+                <button class="modal-close" id="closePackingResultModal" aria-label="Cerrar">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </header>
+            <div class="modal-body" id="packingResultBody">
+                <!-- Packing result will be inserted here -->
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal hidden" id="wardrobeModal" role="dialog" aria-labelledby="wardrobeTitle" aria-modal="true">
+        <div class="modal-overlay"></div>
+        <div class="modal-content large">
+            <header class="modal-header">
+                <h2 id="wardrobeTitle">Mi Armario</h2>
+                <div class="modal-header-actions">
+                    <input type="text" id="wardrobeSearch" placeholder="Buscar prendas..." class="search-input">
+                    <button class="icon-btn" id="addGarmentBtn" aria-label="Añadir prenda">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                    <button class="modal-close" id="closeWardrobeModal" aria-label="Cerrar">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+            <div class="modal-body">
+                <div class="wardrobe-filters">
+                    <select id="wardrobeTypeFilter" class="filter-select">
+                        <option value="">Todos los tipos</option>
+                        <option value="top">Tops</option>
+                        <option value="bottom">Pantalones/Faldas</option>
+                        <option value="dress">Vestidos</option>
+                        <option value="outerwear">Abrigos</option>
+                        <option value="shoes">Zapatos</option>
+                        <option value="accessory">Accesorios</option>
+                    </select>
+                    <select id="wardrobeSeasonFilter" class="filter-select">
+                        <option value="">Todas las temporadas</option>
+                        <option value="spring">Primavera</option>
+                        <option value="summer">Verano</option>
+                        <option value="autumn">Otoño</option>
+                        <option value="winter">Invierno</option>
+                        <option value="all_season">Todo el año</option>
+                    </select>
+                </div>
+                <div class="wardrobe-grid" id="wardrobeGrid">
+                    <!-- Garment cards will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal hidden" id="addGarmentModal" role="dialog" aria-labelledby="addGarmentTitle" aria-modal="true">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="addGarmentTitle">Añadir Prenda</h2>
+                <button class="modal-close" id="closeAddGarmentModal" aria-label="Cerrar">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </header>
+            <div class="modal-body">
+                <form id="addGarmentForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="garmentImage">Foto de la prenda</label>
+                        <div class="image-upload" id="imageUpload">
+                            <input type="file" id="garmentImage" accept="image/*" capture="environment" required hidden>
+                            <div class="upload-placeholder">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                    <polyline points="21 15 16 10 5 21"></polyline>
+                                </svg>
+                                <p>Toca para tomar foto o seleccionar imagen</p>
+                            </div>
+                            <div class="image-preview hidden">
+                                <img id="previewImage" src="" alt="Vista previa">
+                                <button type="button" class="remove-image" aria-label="Eliminar imagen">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="garmentName">Nombre</label>
+                            <input type="text" id="garmentName" placeholder="Ej: Camiseta blanca básica" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="garmentBrand">Marca</label>
+                            <input type="text" id="garmentBrand" placeholder="Opcional">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="garmentType">Tipo</label>
+                            <select id="garmentType" required>
+                                <option value="">Seleccionar...</option>
+                                <option value="top">Top / Camiseta</option>
+                                <option value="bottom">Pantalón / Falda</option>
+                                <option value="dress">Vestido</option>
+                                <option value="outerwear">Abrigo / Chaqueta</option>
+                                <option value="shoes">Zapatos</option>
+                                <option value="accessory">Accesorio</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="garmentSeason">Temporada</label>
+                            <select id="garmentSeason" required>
+                                <option value="all_season">Todo el año</option>
+                                <option value="spring">Primavera</option>
+                                <option value="summer">Verano</option>
+                                <option value="autumn">Otoño</option>
+                                <option value="winter">Invierno</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="garmentSize">Talla</label>
+                            <input type="text" id="garmentSize" placeholder="Ej: M, 38, L">
+                        </div>
+                        <div class="form-group">
+                            <label for="garmentMaterial">Material</label>
+                            <input type="text" id="garmentMaterial" placeholder="Ej: Algodón, Lana">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelAddGarment">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Guardar Prenda</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+    
+    <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

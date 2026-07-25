@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # Development service with hot reload
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend --reload-dir frontend
+    volumes:
+      - .:/app
+      - /app/data/db
+      - /app/data/images
+      - /app/data/models_cache
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - AI_PROVIDER=local
+      - DEVICE=cpu
+      - DATABASE_URL=sqlite:///data/db/smart_wardrobe.db
+    env_file:
+      - .env
+    profiles:
+      - dev
+
+  # Production service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 4
+    volumes:
+      - smart_wardrobe_data:/app/data
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=false
+      - AI_PROVIDER=${AI_PROVIDER:-local}
+      - DEVICE=${DEVICE:-cpu}
+      - DATABASE_URL=sqlite:///data/db/smart_wardrobe.db
+      - NIM_API_KEY=${NIM_API_KEY}
+      - NIM_API_URL=${NIM_API_URL}
+      - NIM_MODEL=${NIM_MODEL}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    profiles:
+      - prod
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/smart_wardrobe.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    profiles:
+      - prod
+
+  # Database backup (optional)
+  backup:
+    image: alpine:latest
+    command: sh -c "apk add --no-cache sqlite3 && while true; do sqlite3 /data/db/smart_wardrobe.db '.backup /backups/smart_wardrobe_$(date +%Y%m%d_%H%M%S).db'; sleep 86400; done"
+    volumes:
+      - smart_wardrobe_data:/data/db:ro
+      - ./backups:/backups
+    profiles:
+      - backup
+
+volumes:
+  smart_wardrobe_data:
+    driver: local
+
+networks:
+  default:
+    name: smart-wardrobe-network
