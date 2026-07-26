@@ -1,7 +1,7 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List
 from datetime import datetime
 from enum import Enum
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GarmentType(str, Enum):
@@ -53,20 +53,21 @@ class AIProviderType(str, Enum):
 # Base schemas
 class GarmentBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    brand: Optional[str] = Field(None, max_length=100)
+    brand: str | None = Field(None, max_length=100)
     type: GarmentType
     color_name: str = Field(..., max_length=50)
     dominant_color_hex: str = Field(..., pattern=r"^#[0-9A-Fa-f]{6}$")
     pattern: PatternType = PatternType.SOLID
     formality: FormalityLevel = FormalityLevel.CASUAL
     season: Season = Season.ALL_SEASON
-    material: Optional[str] = Field(None, max_length=100)
-    size: Optional[str] = Field(None, max_length=20)
-    price: Optional[float] = Field(None, ge=0)
-    purchase_date: Optional[datetime] = None
-    image_path: Optional[str] = None
-    segmentation_mask_path: Optional[str] = None
-    notes: Optional[str] = None
+    material: str | None = Field(None, max_length=100)
+    size: str | None = Field(None, max_length=20)
+    price: float | None = Field(None, ge=0)
+    purchase_date: datetime | None = None
+    raw_image_path: str | None = None
+    processed_image_path: str | None = None
+    segmentation_mask_path: str | None = None
+    notes: str | None = None
 
 
 class GarmentCreate(GarmentBase):
@@ -74,27 +75,28 @@ class GarmentCreate(GarmentBase):
 
 
 class GarmentUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    brand: Optional[str] = Field(None, max_length=100)
-    type: Optional[GarmentType] = None
-    color_name: Optional[str] = Field(None, max_length=50)
-    dominant_color_hex: Optional[str] = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
-    pattern: Optional[PatternType] = None
-    formality: Optional[FormalityLevel] = None
-    season: Optional[Season] = None
-    material: Optional[str] = Field(None, max_length=100)
-    size: Optional[str] = Field(None, max_length=20)
-    price: Optional[float] = Field(None, ge=0)
-    purchase_date: Optional[datetime] = None
-    image_path: Optional[str] = None
-    segmentation_mask_path: Optional[str] = None
-    notes: Optional[str] = None
-    is_favorite: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    brand: str | None = Field(None, max_length=100)
+    type: GarmentType | None = None
+    color_name: str | None = Field(None, max_length=50)
+    dominant_color_hex: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    pattern: PatternType | None = None
+    formality: FormalityLevel | None = None
+    season: Season | None = None
+    material: str | None = Field(None, max_length=100)
+    size: str | None = Field(None, max_length=20)
+    price: float | None = Field(None, ge=0)
+    purchase_date: datetime | None = None
+    raw_image_path: str | None = None
+    processed_image_path: str | None = None
+    segmentation_mask_path: str | None = None
+    notes: str | None = None
+    is_favorite: bool | None = None
 
 
 class GarmentRead(GarmentBase):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     is_favorite: bool
     wear_count: int
@@ -117,35 +119,36 @@ class OutfitBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     occasion: str = Field(..., max_length=100)
     season: Season = Season.ALL_SEASON
+    formality: int = Field(default=1, ge=1, le=5)
     score: float = Field(default=0.0, ge=0.0, le=100.0)
     is_packing: bool = False
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class OutfitCreate(OutfitBase):
-    garment_ids: List[int] = Field(..., min_length=1, max_length=10)
+    garment_ids: list[int] = Field(..., min_length=1, max_length=10)
 
 
 class OutfitUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    occasion: Optional[str] = Field(None, max_length=100)
-    season: Optional[Season] = None
-    score: Optional[float] = Field(None, ge=0.0, le=100.0)
-    is_packing: Optional[bool] = None
-    notes: Optional[str] = None
-    garment_ids: Optional[List[int]] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    occasion: str | None = Field(None, max_length=100)
+    season: Season | None = None
+    score: float | None = Field(None, ge=0.0, le=100.0)
+    is_packing: bool | None = None
+    notes: str | None = None
+    garment_ids: list[int] | None = None
 
 
 class OutfitRead(OutfitBase):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     created_at: datetime
     updated_at: datetime
 
 
 class OutfitWithGarments(OutfitRead):
-    garments: List[GarmentRead] = []
+    garments: list[GarmentRead] = []
 
 
 # Style Rule schemas
@@ -159,7 +162,7 @@ class StyleRuleType(str, Enum):
 
 class StyleRuleBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
+    description: str | None = None
     rule_type: StyleRuleType
     weight: float = Field(default=1.0, ge=0.0, le=10.0)
     parameters: dict = Field(default_factory=dict)
@@ -171,17 +174,17 @@ class StyleRuleCreate(StyleRuleBase):
 
 
 class StyleRuleUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = None
-    rule_type: Optional[StyleRuleType] = None
-    weight: Optional[float] = Field(None, ge=0.0, le=10.0)
-    parameters: Optional[dict] = None
-    is_active: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = None
+    rule_type: StyleRuleType | None = None
+    weight: float | None = Field(None, ge=0.0, le=10.0)
+    parameters: dict | None = None
+    is_active: bool | None = None
 
 
 class StyleRuleRead(StyleRuleBase):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     created_at: datetime
     updated_at: datetime
@@ -191,30 +194,30 @@ class StyleRuleRead(StyleRuleBase):
 class FeedbackBase(BaseModel):
     rating: int = Field(..., ge=-1, le=1)  # -1 dislike, 0 neutral, 1 like
     feedback_type: FeedbackType
-    comment: Optional[str] = None
+    comment: str | None = None
 
 
 class UserFeedbackCreate(FeedbackBase):
-    garment_id: Optional[int] = None
-    outfit_id: Optional[int] = None
+    garment_id: int | None = None
+    outfit_id: int | None = None
 
 
 class UserFeedbackRead(FeedbackBase):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
-    user_id: Optional[int] = None
-    garment_id: Optional[int] = None
-    outfit_id: Optional[int] = None
+    user_id: int | None = None
+    garment_id: int | None = None
+    outfit_id: int | None = None
     created_at: datetime
 
 
 # AI Provider schemas
 class AIProviderConfig(BaseModel):
     provider_type: AIProviderType
-    api_key: Optional[str] = None
-    api_url: Optional[str] = None
-    model: Optional[str] = None
+    api_key: str | None = None
+    api_url: str | None = None
+    model: str | None = None
 
 
 class EnhanceRequest(BaseModel):
@@ -225,7 +228,7 @@ class EnhanceRequest(BaseModel):
 
 class EnhanceResponse(BaseModel):
     enhanced_description: str
-    style_tips: List[str] = []
+    style_tips: list[str] = []
     confidence: float = Field(ge=0.0, le=1.0)
 
 
@@ -233,15 +236,24 @@ class EnhanceResponse(BaseModel):
 class RecommendationRequest(BaseModel):
     occasion: str = Field(..., max_length=100)
     season: Season = Season.ALL_SEASON
-    formality: Optional[FormalityLevel] = None
-    garment_ids: Optional[List[int]] = None
-    exclude_garment_ids: Optional[List[int]] = None
+    formality: FormalityLevel | None = None
+    garment_ids: list[int] | None = None
+    exclude_garment_ids: list[int] | None = None
     top_n: int = Field(default=5, ge=1, le=20)
     use_ai_enhancement: bool = False
 
 
-class RecommendationResponse(BaseModel):
-    outfits: List[OutfitWithGarments] = []
+class OutfitRecommendationRequest(BaseModel):
+    occasion: str = Field(..., max_length=100)
+    season: Season = Season.ALL_SEASON
+    formality: FormalityLevel | None = None
+    garment_ids: list[int] | None = None
+    exclude_garment_ids: list[int] | None = None
+    top_n: int = Field(default=5, ge=1, le=20)
+
+
+class OutfitRecommendationResponse(BaseModel):
+    outfits: list[OutfitWithGarments] = []
     total_found: int = 0
 
 
@@ -250,13 +262,13 @@ class PackingRequest(BaseModel):
     days: int = Field(..., ge=1, le=30)
     occasion: str = Field(..., max_length=100)
     season: Season = Season.ALL_SEASON
-    garment_ids: Optional[List[int]] = None
+    garment_ids: list[int] | None = None
     max_items: int = Field(default=15, ge=5, le=30)
 
 
 class PackingResponse(BaseModel):
-    outfits: List[OutfitWithGarments] = []
-    garment_ids_used: List[int] = []
+    outfits: list[OutfitWithGarments] = []
+    garment_ids_used: list[int] = []
     mix_and_match_ratio: float = 0.0
     total_items: int = 0
 
@@ -265,13 +277,13 @@ class PackingResponse(BaseModel):
 class RateOutfitRequest(BaseModel):
     outfit_id: int
     rating: int = Field(..., ge=-1, le=1)
-    comment: Optional[str] = None
+    comment: str | None = None
 
 
 class RateGarmentRequest(BaseModel):
     garment_id: int
     rating: int = Field(..., ge=-1, le=1)
-    comment: Optional[str] = None
+    comment: str | None = None
 
 
 # Health check
@@ -285,7 +297,7 @@ class HealthResponse(BaseModel):
 
 # Pagination
 class PaginatedResponse(BaseModel):
-    items: List[BaseModel] = []
+    items: list[BaseModel] = []
     total: int
     page: int
     page_size: int

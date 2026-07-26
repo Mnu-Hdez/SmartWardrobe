@@ -67,7 +67,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --chown=appuser:appuser . .
 
 # Create data directories
-RUN mkdir -p data/db data/images/original data/images/processed/garments data/images/processed/outfits data/models_cache && \
+RUN mkdir -p data/db data/images/raw data/images/processed/garments data/images/processed/outfits data/models_cache && \
     chown -R appuser:appuser data
 
 # Copy nginx config

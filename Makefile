@@ -115,14 +115,14 @@ db-reset:
 # Download AI models
 download-models:
 	python -c "
-from backend.vision.segmenter import SAMSegmenter
-from backend.vision.classifier import CLIPClassifier
-print('Downloading SAM...')
-SAMSegmenter()
-print('Downloading CLIP...')
-CLIPClassifier()
-print('Models downloaded successfully!')
-"
+	from backend.vision.segmenter import SAMSegmenter
+	from backend.vision.classifier import CLIPClassifier
+	print('Downloading SAM...')
+	SAMSegmenter()
+	print('Downloading CLIP...')
+	CLIPClassifier()
+	print('Models downloaded successfully!')
+	"
 
 # Docker
 docker-build:

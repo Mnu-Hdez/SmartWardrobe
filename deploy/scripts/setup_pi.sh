@@ -122,7 +122,7 @@ cat > /home/pi/.config/autostart/smart-wardrobe-kiosk.desktop << EOF
 [Desktop Entry]
 Type=Application
 Name=Smart Wardrobe Kiosk
-Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble --disable-component-update --disable-background-networking --disable-default-apps --disable-extensions --disable-sync --disable-translate --no-first-run --disable-background-timer-throttling --disable-renderer-backgrounding --disable-device-discovery-notifications http://localhost:8000
+Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble --disable-component-update --disable-background-networking --disable-default-apps --disable-extensions --disable-sync --disable-translate --no-first-run --disable-background-timer-throttling --disable-renderer-backgrounding --disable-device-discovery-notifications http://localhost:8000/kiosk
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true

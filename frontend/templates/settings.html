@@ -1,0 +1,177 @@
+<!-- Settings View Template - Loaded dynamically for /settings route -->
+<div class="settings-view" id="settingsView">
+    <header class="settings-header">
+        <h1>Administración del Armario</h1>
+        <div class="header-actions">
+            <button class="btn btn-primary" id="addGarmentBtn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Añadir Prenda
+            </button>
+        </div>
+    </header>
+    
+    <div class="settings-toolbar">
+        <div class="search-filters">
+            <input type="text" id="wardrobeSearch" placeholder="Buscar prendas..." class="search-input">
+            <select id="wardrobeTypeFilter" class="filter-select">
+                <option value="">Todos los tipos</option>
+                <option value="top">Tops</option>
+                <option value="bottom">Pantalones/Faldas</option>
+                <option value="dress">Vestidos</option>
+                <option value="outerwear">Abrigos</option>
+                <option value="shoes">Zapatos</option>
+                <option value="accessory">Accesorios</option>
+            </select>
+            <select id="wardrobeSeasonFilter" class="filter-select">
+                <option value="">Todas las temporadas</option>
+                <option value="spring">Primavera</option>
+                <option value="summer">Verano</option>
+                <option value="autumn">Otoño</option>
+                <option value="winter">Invierno</option>
+                <option value="all_season">Todo el año</option>
+            </select>
+        </div>
+        
+        <div class="bulk-actions" id="bulkActions" hidden>
+            <label class="select-all">
+                <input type="checkbox" id="selectAllCheckbox" aria-label="Seleccionar todas">
+                <span>Seleccionar todas</span>
+            </label>
+            <span class="selected-count" id="selectedCount">0 seleccionadas</span>
+            <button class="btn btn-danger" id="bulkDeleteBtn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                Eliminar seleccionadas
+            </button>
+        </div>
+    </div>
+    
+    <div class="wardrobe-grid" id="wardrobeGrid" role="grid" aria-label="Armario">
+        <!-- Garment cards will be inserted here -->
+    </div>
+    
+    <!-- System Configuration Section -->
+    <section class="system-config">
+        <h2>Configuración del Sistema</h2>
+        
+        <div class="config-grid">
+            <div class="config-card">
+                <h3>Estado del Sistema</h3>
+                <div class="status-list">
+                    <div class="status-item">
+                        <span class="status-label">Proveedor IA</span>
+                        <span class="status-value" id="aiProviderStatus">Cargando...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Base de Datos</span>
+                        <span class="status-value" id="dbStatus">Cargando...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="config-card">
+                <h3>API Key NVIDIA NIM</h3>
+                <p class="config-description">Introduce tu API Key de NVIDIA NIM para habilitar recomendaciones avanzadas con IA.</p>
+                <div class="form-group">
+                    <input type="password" id="nimApiKeyInput" placeholder="NIM_API_KEY" class="config-input">
+                    <button class="btn btn-primary" id="saveConfigBtn">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Add/Edit Garment Modal -->
+    <div class="modal hidden" id="addGarmentModal" role="dialog" aria-labelledby="addGarmentTitle" aria-modal="true">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="addGarmentTitle">Añadir Prenda</h2>
+                <button class="modal-close" id="closeAddGarmentModal" aria-label="Cerrar">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </header>
+            <div class="modal-body">
+                <form id="addGarmentForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="garmentImage">Foto de la prenda</label>
+                        <div class="image-upload" id="imageUpload">
+                            <input type="file" id="garmentImage" accept="image/*" capture="environment" hidden>
+                            <div class="upload-placeholder">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                    <polyline points="21 15 16 10 5 21"></polyline>
+                                </svg>
+                                <p>Toca para tomar foto o seleccionar imagen</p>
+                            </div>
+                            <div class="image-preview hidden">
+                                <img id="previewImage" src="" alt="Vista previa">
+                                <button type="button" class="remove-image" aria-label="Eliminar imagen">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="garmentName">Nombre</label>
+                            <input type="text" id="garmentName" name="garmentName" placeholder="Ej: Camiseta blanca básica" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="garmentBrand">Marca</label>
+                            <input type="text" id="garmentBrand" name="garmentBrand" placeholder="Opcional">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="garmentType">Tipo</label>
+                            <select id="garmentType" name="garmentType" required>
+                                <option value="">Seleccionar...</option>
+                                <option value="top">Top / Camiseta</option>
+                                <option value="bottom">Pantalón / Falda</option>
+                                <option value="dress">Vestido</option>
+                                <option value="outerwear">Abrigo / Chaqueta</option>
+                                <option value="shoes">Zapatos</option>
+                                <option value="accessory">Accesorio</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="garmentSeason">Temporada</label>
+                            <select id="garmentSeason" name="garmentSeason" required>
+                                <option value="all_season">Todo el año</option>
+                                <option value="spring">Primavera</option>
+                                <option value="summer">Verano</option>
+                                <option value="autumn">Otoño</option>
+                                <option value="winter">Invierno</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="garmentSize">Talla</label>
+                            <input type="text" id="garmentSize" name="garmentSize" placeholder="Ej: M, 38, L">
+                        </div>
+                        <div class="form-group">
+                            <label for="garmentMaterial">Material</label>
+                            <input type="text" id="garmentMaterial" name="garmentMaterial" placeholder="Ej: Algodón, Lana">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" data-modal-cancel>Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Guardar Prenda</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
