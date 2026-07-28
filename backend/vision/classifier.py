@@ -217,7 +217,7 @@ class CLIPClassifier:
 
     def find_similar_garments(
         self, query_image: Image.Image, garment_embeddings: list[np.ndarray], top_k: int = 5
-    ) -> list[Tuple[int, float]]:
+    ) -> list[tuple[int, float]]:
         """Find similar garments by embedding similarity."""
         query_embed = self.get_embedding(query_image)
 

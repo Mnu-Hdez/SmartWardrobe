@@ -8,8 +8,6 @@ from backend.models.schemas import (
     PackingRequest,
     EnhanceRequest, EnhanceResponse,
     HealthResponse,
-)
-from backend.models.garment import (
     GarmentType, Season, FormalityLevel, PatternType,
     FeedbackType, AIProviderType
 )

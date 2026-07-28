@@ -1,11 +1,12 @@
 import math
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from sqlmodel import Session, select
 
 from backend.core.config import get_settings
-from backend.models.garment import Garment, Outfit, StyleRule
+from backend.models.garment import Garment, Outfit, OutfitGarmentLink, StyleRule
 from backend.repositories import GarmentRepository, StyleRuleRepository, UserFeedbackRepository
 
 
@@ -57,7 +58,7 @@ class StyleEngine:
         links = self.session.exec(
             select(OutfitGarmentLink).where(OutfitGarmentLink.outfit_id == outfit.id)
         ).all()
-        garment_ids = [l.garment_id for l in links]
+        garment_ids = [link.garment_id for link in links]
         if not garment_ids:
             return []
         return self.garment_repo.get_by_ids(garment_ids)
@@ -259,7 +260,6 @@ class StyleEngine:
         non_solid = [p for p in patterns if p != "solid"]
 
         num_patterns = len(non_solid)
-        total_items = len(garments)
 
         if num_patterns == 0:
             return 80.0, {"type": "all_solid", "count": 0}  # Solid is safe but boring
@@ -405,6 +405,3 @@ class StyleEngine:
                 self._rules_cache = None  # Invalidate cache
                 return True
         return False
-
-
-from backend.models.garment import OutfitGarmentLink

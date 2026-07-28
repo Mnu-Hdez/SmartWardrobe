@@ -1,5 +1,5 @@
 from datetime import datetime
-from enum import Enum
+from enum import IntEnum, StrEnum
 from typing import TYPE_CHECKING, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from backend.models.user_feedback import UserFeedback
 
 
-class GarmentType(str, Enum):
+class GarmentType(StrEnum):
     TOP = "top"
     BOTTOM = "bottom"
     DRESS = "dress"
@@ -19,7 +19,7 @@ class GarmentType(str, Enum):
     ACCESSORY = "accessory"
 
 
-class Season(str, Enum):
+class Season(StrEnum):
     SPRING = "spring"
     SUMMER = "summer"
     AUTUMN = "autumn"
@@ -27,7 +27,7 @@ class Season(str, Enum):
     ALL_SEASON = "all_season"
 
 
-class FormalityLevel(int, Enum):
+class FormalityLevel(IntEnum):
     CASUAL = 1
     SMART_CASUAL = 2
     BUSINESS_CASUAL = 3
@@ -35,7 +35,7 @@ class FormalityLevel(int, Enum):
     BLACK_TIE = 5
 
 
-class PatternType(str, Enum):
+class PatternType(StrEnum):
     SOLID = "solid"
     STRIPED = "striped"
     CHECKERED = "checkered"

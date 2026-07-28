@@ -1,6 +1,6 @@
 import logging
-from pathlib import Path
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     # Initialize AI provider
     from backend.ai_providers.factory import AIProviderFactory
 
-    provider = AIProviderFactory.get_available_provider()
+    provider = await AIProviderFactory.get_available_provider()
     logger.info(f"AI Provider: {provider.name}")
 
     yield
@@ -96,4 +96,3 @@ if __name__ == "__main__":
     )
 
 
-from pathlib import Path

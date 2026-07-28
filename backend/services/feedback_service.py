@@ -4,6 +4,7 @@ from typing import Any
 from sqlmodel import Session
 
 from backend.models.garment import UserFeedback
+from backend.models.schemas import UserFeedbackCreate
 from backend.repositories import GarmentRepository, OutfitRepository, UserFeedbackRepository
 from backend.services.style_engine import StyleEngine
 
@@ -128,6 +129,3 @@ class FeedbackService:
         # This would integrate with OutfitComposer but bias the scoring
         # based on learned preferences
         pass
-
-
-from backend.models.schemas import UserFeedbackCreate

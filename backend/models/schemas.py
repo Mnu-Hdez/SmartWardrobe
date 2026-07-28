@@ -1,10 +1,10 @@
 from datetime import datetime
-from enum import Enum
+from enum import IntEnum, StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class GarmentType(str, Enum):
+class GarmentType(StrEnum):
     TOP = "top"
     BOTTOM = "bottom"
     DRESS = "dress"
@@ -13,7 +13,7 @@ class GarmentType(str, Enum):
     ACCESSORY = "accessory"
 
 
-class Season(str, Enum):
+class Season(StrEnum):
     SPRING = "spring"
     SUMMER = "summer"
     AUTUMN = "autumn"
@@ -21,7 +21,7 @@ class Season(str, Enum):
     ALL_SEASON = "all_season"
 
 
-class FormalityLevel(int, Enum):
+class FormalityLevel(IntEnum):
     CASUAL = 1
     SMART_CASUAL = 2
     BUSINESS_CASUAL = 3
@@ -29,7 +29,7 @@ class FormalityLevel(int, Enum):
     BLACK_TIE = 5
 
 
-class PatternType(str, Enum):
+class PatternType(StrEnum):
     SOLID = "solid"
     STRIPED = "striped"
     CHECKERED = "checkered"
@@ -39,13 +39,13 @@ class PatternType(str, Enum):
     ABSTRACT = "abstract"
 
 
-class FeedbackType(str, Enum):
+class FeedbackType(StrEnum):
     LIKE = "like"
     DISLIKE = "dislike"
     NEUTRAL = "neutral"
 
 
-class AIProviderType(str, Enum):
+class AIProviderType(StrEnum):
     LOCAL = "local"
     NIM = "nim"
 
@@ -152,7 +152,7 @@ class OutfitWithGarments(OutfitRead):
 
 
 # Style Rule schemas
-class StyleRuleType(str, Enum):
+class StyleRuleType(StrEnum):
     COLOR_HARMONY = "color_harmony"
     FORMALITY_MATCH = "formality_match"
     PATTERN_BALANCE = "pattern_balance"
@@ -189,6 +189,15 @@ class StyleRuleRead(StyleRuleBase):
     created_at: datetime
     updated_at: datetime
 
+    # Parse JSON string back to dict when reading from DB
+    @field_validator("parameters", mode="before")
+    @classmethod
+    def parse_parameters(cls, v):
+        import json
+        if isinstance(v, str):
+            return json.loads(v)
+        return v or {}
+
 
 # Feedback schemas
 class FeedbackBase(BaseModel):
@@ -200,6 +209,7 @@ class FeedbackBase(BaseModel):
 class UserFeedbackCreate(FeedbackBase):
     garment_id: int | None = None
     outfit_id: int | None = None
+    context: str | None = None
 
 
 class UserFeedbackRead(FeedbackBase):

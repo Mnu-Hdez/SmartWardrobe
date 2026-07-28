@@ -1,3 +1,5 @@
+import itertools
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
@@ -311,7 +313,3 @@ class PackingService:
 
         suggestions.sort(key=lambda x: x["versatility_bonus"], reverse=True)
         return suggestions[:10]
-
-
-import itertools
-from collections import defaultdict

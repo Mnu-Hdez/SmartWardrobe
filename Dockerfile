@@ -1,5 +1,6 @@
 # Smart Wardrobe Outfit System - Dockerfile
 # Multi-stage build for production deployment
+# Supports both x86_64 and ARM64 (Raspberry Pi)
 
 # ============================================================
 # Build Stage
@@ -16,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev \
     zlib1g-dev \
     libpng-dev \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -25,17 +27,10 @@ WORKDIR /app
 COPY pyproject.toml ./
 
 # Install Python dependencies
+# Install torch CPU-first to avoid downloading CUDA wheels (saves ~1GB)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -e .
-
-# Download AI models (optional, can be done at runtime)
-# RUN python -c "
-# from backend.vision.segmenter import SAMSegmenter
-# from backend.vision.classifier import CLIPClassifier
-# SAMSegmenter()
-# CLIPClassifier()
-# print('Models downloaded!')
-# "
+    pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchvision && \
+    pip install --no-cache-dir -e .[torch]
 
 # ============================================================
 # Runtime Stage
@@ -43,6 +38,11 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 FROM python:3.11-slim as runtime
 
 # Install runtime dependencies
+# - libopenblas0, libomp5: PyTorch/OpenMP
+# - libjpeg62-turbo, zlib1g, libpng16-16: Pillow/image processing
+# - sqlite3: database
+# - libgomp1, libstdc++6: PyTorch C++ runtime
+# - nginx: reverse proxy (only used in prod profile via compose)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libopenblas0 \
     libomp5 \
@@ -50,7 +50,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g \
     libpng16-16 \
     sqlite3 \
+    libgomp1 \
+    libstdc++6 \
     nginx \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -70,22 +73,19 @@ COPY --chown=appuser:appuser . .
 RUN mkdir -p data/db data/images/raw data/images/processed/garments data/images/processed/outfits data/models_cache && \
     chown -R appuser:appuser data
 
-# Copy nginx config
-COPY deploy/nginx/smart_wardrobe.conf /etc/nginx/sites-available/smart_wardrobe.conf
+# Copy nginx config (container paths, not Pi paths)
+COPY deploy/nginx/smart_wardrobe.container.conf /etc/nginx/sites-available/smart_wardrobe.conf
 RUN ln -sf /etc/nginx/sites-available/smart_wardrobe.conf /etc/nginx/sites-enabled/ && \
     rm -f /etc/nginx/sites-enabled/default
-
-# Copy systemd service (for reference, not used in container)
-COPY deploy/systemd/smart_wardrobe.service /etc/systemd/system/
 
 # Switch to non-root user
 USER appuser
 
-# Expose ports
+# Expose ports (80 for nginx, 8000 for API)
 EXPOSE 80 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Environment variables
@@ -96,5 +96,5 @@ ENV PYTHONUNBUFFERED=1 \
     AI_PROVIDER=local \
     DEVICE=cpu
 
-# Default command (will be overridden by docker-compose)
+# Default command (overridden by docker-compose)
 CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

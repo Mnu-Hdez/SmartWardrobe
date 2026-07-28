@@ -1,7 +1,8 @@
 
 from sqlmodel import Session, select
 
-from backend.models.garment import Outfit, OutfitCreate, OutfitGarmentLink, OutfitUpdate
+from backend.models.garment import Outfit, OutfitGarmentLink, StyleRule
+from backend.models.schemas import OutfitCreate, OutfitUpdate, StyleRuleCreate, StyleRuleUpdate
 
 
 class OutfitRepository:
@@ -51,7 +52,7 @@ class OutfitRepository:
         return list(self.session.exec(statement).all())
 
     def get_packing_outfits(self, days: int = None) -> list[Outfit]:
-        statement = select(Outfit).where(Outfit.is_packing == True)
+        statement = select(Outfit).where(Outfit.is_packing)
         if days:
             statement = statement.where(Outfit.packing_days == days)
         return list(self.session.exec(statement).all())

@@ -2,7 +2,8 @@ from datetime import datetime
 
 from sqlmodel import Session, select
 
-from backend.models.garment import UserFeedback, UserFeedbackCreate
+from backend.models.garment import UserFeedback
+from backend.models.schemas import UserFeedbackCreate
 
 
 class UserFeedbackRepository:

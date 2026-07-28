@@ -1,7 +1,7 @@
 
 from sqlmodel import Session, select
 
-from backend.models.garment import Garment, GarmentCreate, GarmentUpdate
+from backend.models import Garment, GarmentCreate, GarmentUpdate
 
 
 class GarmentRepository:

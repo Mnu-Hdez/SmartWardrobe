@@ -1,4 +1,6 @@
 
+from pathlib import Path
+
 import numpy as np
 import requests
 from PIL import Image
@@ -49,7 +51,21 @@ class SAMSegmenter:
                 "segment-anything not installed. Install with: pip install segment-anything"
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to load SAM: {e}")
+            # Handle corrupted checkpoint file
+            if "failed finding central directory" in str(e) or "corrupted" in str(e).lower():
+                print(f"Corrupted checkpoint detected, removing and re-downloading: {e}")
+                try:
+                    Path(self.checkpoint_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                # Re-download
+                self.checkpoint_path = self._get_checkpoint_path()
+                sam = sam_model_registry[self.model_type](checkpoint=self.checkpoint_path)
+                sam.to(device=self.settings.device)
+                self.predictor = SamPredictor(sam)
+                print(f"SAM {self.model_type} re-downloaded and loaded on {self.settings.device}")
+            else:
+                raise RuntimeError(f"Failed to load SAM: {e}")
 
     def segment(
         self,
@@ -156,7 +172,3 @@ class SAMSegmenter:
         x1, x2 = np.where(cols)[0][[0, -1]]
 
         return int(x1), int(y1), int(x2), int(y2)
-
-
-# Lazy import for Path
-from pathlib import Path

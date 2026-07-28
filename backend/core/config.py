@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -22,6 +22,9 @@ class Settings(BaseSettings):
 
     # File Storage - Dual path structure for raw and processed images
     images_raw_dir: str = Field(default="data/images/raw", validation_alias="IMAGES_RAW_DIR")
+    images_processed_dir: str = Field(
+        default="data/images/processed", validation_alias="IMAGES_PROCESSED_DIR"
+    )
     images_processed_garments_dir: str = Field(
         default="data/images/processed/garments", validation_alias="IMAGES_PROCESSED_GARMENTS_DIR"
     )
@@ -50,6 +53,7 @@ class Settings(BaseSettings):
     )
     clip_model: str = Field(default="ViT-B-32", validation_alias="CLIP_MODEL")
     clip_pretrained: str = Field(default="openai", validation_alias="CLIP_PRETRAINED")
+    clip_model_name: str = Field(default="ViT-B/32", validation_alias="CLIP_MODEL_NAME")
 
     # Device
     device: str = Field(default="cuda", validation_alias="DEVICE")
@@ -59,14 +63,40 @@ class Settings(BaseSettings):
 
     # CORS - Allow all origins for local network access
     cors_origins: list[str] = Field(
-        default=["http://localhost:8000", "http://localhost:3000", "http://localhost:8080", "*"],
+        default_factory=lambda: ["http://localhost:8000", "http://localhost:3000", "http://localhost:8080", "*"],
         validation_alias="CORS_ORIGINS",
     )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            import json
+            v = v.strip()
+            if not v:
+                return ["*"]
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+                return [parsed]
+            except json.JSONDecodeError:
+                return [item.strip() for item in v.split(",") if item.strip()]
+        return v
+
+    # Optional: Logging
+    log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+    log_file: str = Field(default="/app/data/logs/app.log", validation_alias="LOG_FILE")
+
+    # Optional: Backup
+    backup_enabled: bool = Field(default=True, validation_alias="BACKUP_ENABLED")
+    backup_retention_days: int = Field(default=7, validation_alias="BACKUP_RETENTION_DAYS")
 
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"
 
 
 @lru_cache
