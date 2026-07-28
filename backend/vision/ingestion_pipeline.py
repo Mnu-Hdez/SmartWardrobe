@@ -99,8 +99,8 @@ class IngestionPipeline:
             try:
                 mask, masked_img, seg_score = self.segmenter.segment(image)
 
-                # Save masked image to PROCESSED storage
-                masked_image_path = str(processed_dir / f"{garment_id}_masked{original_ext}")
+                # Save masked image to PROCESSED storage as PNG (supports transparency)
+                masked_image_path = str(processed_dir / f"{garment_id}_masked.png")
                 masked_img.save(masked_image_path)
 
                 # Save mask
