@@ -1,8 +1,11 @@
 
+from pathlib import Path
+from typing import Optional
+
 import numpy as np
-import requests
+import requests  # type: ignore[import-untyped]
 from PIL import Image
-from segment_anything import SamPredictor, sam_model_registry
+from segment_anything import SamPredictor, sam_model_registry  # type: ignore[import-untyped]
 
 from backend.core.config import get_settings
 
@@ -10,9 +13,9 @@ from backend.core.config import get_settings
 class SAMSegmenter:
     """Segment Anything Model (SAM) for garment segmentation."""
 
-    def __init__(self, model_type: str = "vit_h", checkpoint_path: str = None):
+    def __init__(self, model_type: Optional[str] = None, checkpoint_path: Optional[str] = None):
         self.settings = get_settings()
-        self.model_type = model_type
+        self.model_type = model_type or self.settings.sam_model_type
         self.checkpoint_path = checkpoint_path or self._get_checkpoint_path()
         self.predictor = None
         self._load_model()
@@ -49,7 +52,21 @@ class SAMSegmenter:
                 "segment-anything not installed. Install with: pip install segment-anything"
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to load SAM: {e}")
+            # Handle corrupted checkpoint file
+            if "failed finding central directory" in str(e) or "corrupted" in str(e).lower():
+                print(f"Corrupted checkpoint detected, removing and re-downloading: {e}")
+                try:
+                    Path(self.checkpoint_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                # Re-download
+                self.checkpoint_path = self._get_checkpoint_path()
+                sam = sam_model_registry[self.model_type](checkpoint=self.checkpoint_path)
+                sam.to(device=self.settings.device)
+                self.predictor = SamPredictor(sam)
+                print(f"SAM {self.model_type} re-downloaded and loaded on {self.settings.device}")
+            else:
+                raise RuntimeError(f"Failed to load SAM: {e}")
 
     def segment(
         self,
@@ -156,7 +173,3 @@ class SAMSegmenter:
         x1, x2 = np.where(cols)[0][[0, -1]]
 
         return int(x1), int(y1), int(x2), int(y2)
-
-
-# Lazy import for Path
-from pathlib import Path

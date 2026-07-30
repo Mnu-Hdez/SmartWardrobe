@@ -8,7 +8,7 @@ from PIL import Image
 
 from backend.core.config import get_settings
 from backend.database.connection import get_db_session
-from backend.models.garment import GarmentCreate
+from backend.models.schemas import FormalityLevel, GarmentCreate, Season
 from backend.repositories import GarmentRepository
 from backend.vision.classifier import CLIPClassifier
 from backend.vision.color_extractor import ColorExtractor, extract_colors_from_image
@@ -99,8 +99,8 @@ class IngestionPipeline:
             try:
                 mask, masked_img, seg_score = self.segmenter.segment(image)
 
-                # Save masked image to PROCESSED storage
-                masked_image_path = str(processed_dir / f"{garment_id}_masked{original_ext}")
+                # Save masked image to PROCESSED storage as PNG (supports transparency)
+                masked_image_path = str(processed_dir / f"{garment_id}_masked.png")
                 masked_img.save(masked_image_path)
 
                 # Save mask
@@ -222,25 +222,26 @@ class IngestionPipeline:
             "palette": color_info["palette"],
         }
 
-    def _formality_to_level(self, formality: str) -> int:
-        """Convert formality string to level 1-5."""
+    def _formality_to_level(self, formality: str) -> FormalityLevel:
+        """Convert formality string to FormalityLevel enum."""
+        from backend.models.schemas import FormalityLevel
         mapping = {
-            "very casual": 1,
-            "casual": 1,
-            "smart casual": 2,
-            "business casual": 3,
-            "formal": 4,
-            "very formal": 5,
-            "black tie": 5,
+            "very casual": FormalityLevel.CASUAL,
+            "casual": FormalityLevel.CASUAL,
+            "smart casual": FormalityLevel.SMART_CASUAL,
+            "business casual": FormalityLevel.BUSINESS_CASUAL,
+            "formal": FormalityLevel.FORMAL,
+            "very formal": FormalityLevel.BLACK_TIE,
+            "black tie": FormalityLevel.BLACK_TIE,
         }
-        return mapping.get(formality.lower(), 1)
+        return mapping.get(formality.lower(), FormalityLevel.CASUAL)
 
-    def _season_to_enum(self, season: str) -> str:
-        """Convert season string to enum."""
+    def _season_to_enum(self, season: str) -> Season:
+        """Convert season string to Season enum."""
         season = season.lower()
         if season in ["spring", "summer", "autumn", "fall", "winter", "all season"]:
-            return season.replace("fall", "autumn")
-        return "all_season"
+            return Season(season.replace("fall", "autumn"))
+        return Season.ALL_SEASON
 
     def batch_process(self, image_dir: str, **kwargs) -> list:
         """Process multiple images in a directory."""

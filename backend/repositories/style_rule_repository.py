@@ -1,7 +1,10 @@
 
+import json
+
 from sqlmodel import Session, select
 
-from backend.models.garment import StyleRule, StyleRuleCreate, StyleRuleUpdate
+from backend.models.garment import StyleRule
+from backend.models.schemas import StyleRuleCreate, StyleRuleUpdate
 
 
 class StyleRuleRepository:
@@ -17,7 +20,7 @@ class StyleRuleRepository:
             rule_type=rule.rule_type,
             weight=rule.weight,
             is_active=rule.is_active,
-            parameters=rule.parameters,
+            parameters=json.dumps(rule.parameters) if rule.parameters else "{}",
         )
         self.session.add(db_rule)
         self.session.commit()
@@ -34,12 +37,12 @@ class StyleRuleRepository:
     def get_all(self, active_only: bool = True) -> list[StyleRule]:
         statement = select(StyleRule)
         if active_only:
-            statement = statement.where(StyleRule.is_active == True)
+            statement = statement.where(StyleRule.is_active)
         return list(self.session.exec(statement).all())
 
     def get_by_type(self, rule_type: str) -> list[StyleRule]:
         statement = select(StyleRule).where(
-            StyleRule.rule_type == rule_type, StyleRule.is_active == True
+            StyleRule.rule_type == rule_type, StyleRule.is_active
         )
         return list(self.session.exec(statement).all())
 
@@ -50,7 +53,10 @@ class StyleRuleRepository:
 
         update_data = rule.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            setattr(db_rule, field, value)
+            if field == "parameters" and value is not None:
+                setattr(db_rule, field, json.dumps(value))
+            else:
+                setattr(db_rule, field, value)
 
         self.session.add(db_rule)
         self.session.commit()

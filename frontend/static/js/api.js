@@ -282,7 +282,10 @@ class ApiError extends Error {
 // Export singleton instance
 const api = new ApiClient();
 
-// Also export classes for testing
+// Export for ES modules
+export { ApiClient, ApiError, api };
+
+// Also export for global/window
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { ApiClient, ApiError, api };
 } else {

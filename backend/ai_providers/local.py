@@ -1,7 +1,7 @@
 from typing import Any
 
 from backend.ai_providers import AIProvider
-from backend.models.schemas import GarmentRead, OutfitRead, OutfitWithGarments
+from backend.models.schemas import GarmentRead, OutfitRead
 
 
 class LocalRulesProvider(AIProvider):

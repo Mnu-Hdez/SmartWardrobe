@@ -1,7 +1,9 @@
 
 import numpy as np
-from colorthief import ColorThief
+from colorthief import ColorThief  # type: ignore[import-untyped]
 from PIL import Image
+from sklearn.cluster import KMeans  # type: ignore[import-untyped]
+from typing import Optional
 
 
 class ColorExtractor:
@@ -10,7 +12,7 @@ class ColorExtractor:
     def __init__(self, quality: int = 10):
         self.quality = quality
 
-    def extract_dominant_color(self, image_path: str, mask_path: str = None) -> tuple[str, str]:
+    def extract_dominant_color(self, image_path: str, mask_path: Optional[str] = None) -> tuple[str, str]:
         """
         Extract dominant color from image.
 
@@ -30,7 +32,7 @@ class ColorExtractor:
         return hex_color, color_name
 
     def extract_palette(
-        self, image_path: str, color_count: int = 5, mask_path: str = None
+        self, image_path: str, color_count: int = 5, mask_path: Optional[str] = None
     ) -> list[tuple[str, str]]:
         """Extract color palette from image."""
         if mask_path:
@@ -171,7 +173,7 @@ class ColorExtractor:
 
 
 def extract_colors_from_image(
-    image_path: str, mask_path: str = None, palette_size: int = 5
+    image_path: str, mask_path: Optional[str] = None, palette_size: int = 5
 ) -> dict:
     """Convenience function to extract all color info."""
     extractor = ColorExtractor()

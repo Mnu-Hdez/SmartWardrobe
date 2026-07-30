@@ -1,6 +1,6 @@
 import logging
-from pathlib import Path
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     # Initialize AI provider
     from backend.ai_providers.factory import AIProviderFactory
 
-    provider = AIProviderFactory.get_available_provider()
+    provider = await AIProviderFactory.get_available_provider()
     logger.info(f"AI Provider: {provider.name}")
 
     yield
@@ -69,6 +69,15 @@ def create_app() -> FastAPI:
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+    # Mount images directories for serving garment images
+    images_raw_dir = Path(settings.images_raw_dir)
+    if images_raw_dir.exists():
+        app.mount("/images/raw", StaticFiles(directory=str(images_raw_dir)), name="images_raw")
+
+    images_processed_dir = Path(settings.images_processed_garments_dir)
+    if images_processed_dir.exists():
+        app.mount("/images/processed/garments", StaticFiles(directory=str(images_processed_dir)), name="images_processed_garments")
+
     # Serve frontend index.html for SPA
     @app.get("/", response_class=HTMLResponse)
     async def serve_frontend():
@@ -81,6 +90,20 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health():
         return {"status": "healthy", "version": settings.app_version}
+
+    # SPA fallback - serve index.html for all non-API, non-static routes
+    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    @app.head("/{full_path:path}", response_class=HTMLResponse)
+    async def spa_fallback(full_path: str):
+        # Skip API routes
+        if full_path.startswith("api/") or full_path.startswith("static/") or full_path.startswith("images/"):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        index_path = Path(settings.frontend_dir) / "index.html"
+        if index_path.exists():
+            return index_path.read_text()
+        return "<h1>Smart Wardrobe Outfit System</h1><p>Frontend not built.</p>"
 
     return app
 
@@ -96,4 +119,3 @@ if __name__ == "__main__":
     )
 
 
-from pathlib import Path

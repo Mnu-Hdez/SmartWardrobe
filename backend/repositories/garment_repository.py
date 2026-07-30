@@ -1,7 +1,7 @@
 
 from sqlmodel import Session, select
 
-from backend.models.garment import Garment, GarmentCreate, GarmentUpdate
+from backend.models import Garment, GarmentCreate, GarmentUpdate
 
 
 class GarmentRepository:
@@ -70,6 +70,12 @@ class GarmentRepository:
     def count(self) -> int:
         statement = select(Garment)
         return len(list(self.session.exec(statement).all()))
+
+    def get_by_ids(self, garment_ids: list[int]) -> list[Garment]:
+        if not garment_ids:
+            return []
+        statement = select(Garment).where(Garment.id.in_(garment_ids))
+        return list(self.session.exec(statement).all())
 
     def get_with_bias(self, min_bias: float = -1.0, max_bias: float = 1.0) -> list[Garment]:
         statement = select(Garment).where(

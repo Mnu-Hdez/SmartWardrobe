@@ -25,12 +25,15 @@ help:
 	@echo ""
 	@echo "Docker:"
 	@echo "  docker-build  Build Docker image"
-	@echo "  docker-run    Run Docker container"
+	@echo "  docker-dev    Run development with docker-compose"
+	@echo "  docker-prod   Run production with docker-compose"
+	@echo "  docker-stop   Stop all docker containers"
+	@echo "  docker-logs   View docker logs"
+	@echo "  docker-clean  Remove containers and volumes"
 	@echo ""
 	@echo "Deployment (Raspberry Pi):"
 	@echo "  deploy-pi     Deploy to Raspberry Pi via SSH"
 	@echo "  setup-pi      Initial Raspberry Pi setup"
-	@echo ""
 
 # Python & Dependencies
 install:
@@ -42,6 +45,13 @@ install:
 install-cuda:
 	pip install --upgrade pip
 	pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+	pip install -e ".[dev]"
+	pip install segment-anything --no-deps || true
+
+# Install PyTorch CPU (for ARM64 / Raspberry Pi)
+install-cpu:
+	pip install --upgrade pip
+	pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 	pip install -e ".[dev]"
 	pip install segment-anything --no-deps || true
 
@@ -92,103 +102,46 @@ clean:
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	find . -type f -name "*.pyo" -delete 2>/dev/null || true
 	find . -type f -name ".coverage" -delete 2>/dev/null || true
-	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name ".mypy_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf htmlcov/ .coverage dist/ build/ *.egg-info/ 2>/dev/null || true
 
 # Database
 db-init:
-	python -c "from backend.database.connection import init_db; init_db()"
+	python -m backend.scripts.init_db
 
 db-migrate:
 	alembic upgrade head
 
-db-migrate-create:
-	@read -p "Migration message: " msg; \
-	alembic revision --autogenerate -m "$$msg"
-
 db-reset:
 	rm -f data/db/smart_wardrobe.db
-	$(MAKE) db-init
-
-# Download AI models
-download-models:
-	python -c "
-	from backend.vision.segmenter import SAMSegmenter
-	from backend.vision.classifier import CLIPClassifier
-	print('Downloading SAM...')
-	SAMSegmenter()
-	print('Downloading CLIP...')
-	CLIPClassifier()
-	print('Models downloaded successfully!')
-	"
+	make db-init
 
 # Docker
 docker-build:
-	docker build -t smart-wardrobe:latest .
+	docker compose build
 
-docker-run:
-	docker run -d \
-		--name smart-wardrobe \
-		-p 8000:8000 \
-		-v $(PWD)/data:/app/data \
-		-v $(PWD)/.env:/app/.env \
-		--restart unless-stopped \
-		smart-wardrobe:latest
+docker-dev:
+	docker compose --profile dev up --build
+
+docker-prod:
+	docker compose --profile prod up --build -d
 
 docker-stop:
-	docker stop smart-wardrobe && docker rm smart-wardrobe
+	docker compose down
 
 docker-logs:
-	docker logs -f smart-wardrobe
+	docker compose logs -f
 
-# Raspberry Pi Deployment
-PI_HOST?=pi@raspberrypi.local
-PI_PATH?=/home/pi/smart-wardrobe
+docker-clean:
+	docker compose down -v
+	docker system prune -f
 
+# Deployment (Raspberry Pi)
 deploy-pi:
-	rsync -avz --exclude='.git' --exclude='__pycache__' --exclude='data/db/*.db' \
-		--exclude='data/images' --exclude='.env' \
-		./ $(PI_HOST):$(PI_PATH)/
-	ssh $(PI_HOST) "cd $(PI_PATH) && pip install -e . && sudo systemctl restart smart-wardrobe"
+	@echo "Deploying to Raspberry Pi..."
+	@echo "Usage: make deploy-pi PI_HOST=pi@raspberrypi.local PI_DIR=/home/pi/smart-wardrobe"
+	rsync -avz --exclude='.git' --exclude='__pycache__' --exclude='data' --exclude='venv' --exclude='.env' . $(PI_HOST):$(PI_DIR)/
+	ssh $(PI_HOST) "cd $(PI_DIR) && docker compose --profile prod up --build -d"
 
 setup-pi:
-	ssh $(PI_HOST) "bash -s" < deploy/scripts/setup_pi.sh
-
-pi-logs:
-	ssh $(PI_HOST) "sudo journalctl -u smart-wardrobe -f"
-
-pi-status:
-	ssh $(PI_HOST) "sudo systemctl status smart-wardrobe"
-
-# Development utilities
-shell:
-	python -c "import backend; print('Backend loaded')"
-
-check-imports:
-	python -c "from backend.api.main import app; print('App imports OK')"
-
-# Generate requirements.txt for environments without Poetry
-requirements:
-	pip freeze > requirements.txt
-
-# Pre-commit hooks
-pre-commit-install:
-	pre-commit install
-
-pre-commit-run:
-	pre-commit run --all-files
-
-# Security audit
-security-audit:
-	pip-audit
-	bandit -r backend/
-
-# Performance profiling
-profile:
-	python -m cProfile -o profile.stats -m backend.api.main
-
-# Documentation
-docs-serve:
-	cd docs && python -m http.server 8080
+	@echo "Setting up Raspberry Pi..."
+	@echo "Usage: make setup-pi PI_HOST=pi@raspberrypi.local"
+	ssh $(PI_HOST) "curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $$USER && newgrp docker"

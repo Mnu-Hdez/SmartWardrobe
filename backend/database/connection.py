@@ -47,51 +47,51 @@ def init_db() -> None:
     create_db_and_tables()
 
     # Add default style rules
-    from backend.models.schemas import StyleRuleCreate
+    from backend.models.schemas import StyleRuleCreate, StyleRuleType
     from backend.repositories.style_rule_repository import StyleRuleRepository
 
     default_rules = [
         StyleRuleCreate(
             name="color_harmony_complementary",
             description="Complementary colors score higher",
-            rule_type="color_harmony",
+            rule_type=StyleRuleType.COLOR_HARMONY,
             weight=1.5,
-            parameters='{"method": "complementary", "threshold": 30}',
+            parameters={"method": "complementary", "threshold": 30},
         ),
         StyleRuleCreate(
             name="color_harmony_analogous",
             description="Analogous colors score well",
-            rule_type="color_harmony",
+            rule_type=StyleRuleType.COLOR_HARMONY,
             weight=1.2,
-            parameters='{"method": "analogous", "threshold": 15}',
+            parameters={"method": "analogous", "threshold": 15},
         ),
         StyleRuleCreate(
             name="color_harmony_monochromatic",
             description="Monochromatic outfits are elegant",
-            rule_type="color_harmony",
+            rule_type=StyleRuleType.COLOR_HARMONY,
             weight=1.0,
-            parameters='{"method": "monochromatic", "threshold": 10}',
+            parameters={"method": "monochromatic", "threshold": 10},
         ),
         StyleRuleCreate(
             name="formality_match",
             description="Garments should have similar formality levels",
-            rule_type="formality_match",
+            rule_type=StyleRuleType.FORMALITY_MATCH,
             weight=2.0,
-            parameters='{"max_difference": 1}',
+            parameters={"max_difference": 1},
         ),
         StyleRuleCreate(
             name="pattern_balance",
             description="Avoid too many patterns in one outfit",
-            rule_type="pattern_balance",
+            rule_type=StyleRuleType.PATTERN_BALANCE,
             weight=1.5,
-            parameters='{"max_patterns": 2}',
+            parameters={"max_patterns": 2},
         ),
         StyleRuleCreate(
             name="seasonal_appropriateness",
             description="Garments should match the season",
-            rule_type="seasonal",
+            rule_type=StyleRuleType.SEASON_MATCH,
             weight=1.0,
-            parameters="{}",
+            parameters={},
         ),
     ]
 

@@ -323,13 +323,13 @@ class KioskUI {
         
         if (outfit.garments && outfit.garments.length > 0) {
             outfit.garments.forEach(garment => {
-                const colorHex = garment.color_hex || '#666666';
-                // Use raw_image_path for high-quality display
-                const imageUrl = garment.raw_image_path 
-                    ? `/static/${garment.raw_image_path.replace(/^.*[\\/]/, '')}`
-                    : garment.processed_image_path
-                        ? `/static/${garment.processed_image_path.replace(/^.*[\\/]/, '')}`
-                        : null;
+                            const colorHex = garment.color_hex || '#666666';
+                            // Use raw_image_path for high-quality display - serve via /images/raw/
+                            const imageUrl = garment.raw_image_path
+                                ? `/images/raw/${garment.raw_image_path.replace(/^.*[\\/]/, '')}`
+                                : garment.processed_image_path
+                                    ? `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\/]/, '')}`
+                                    : null;
                 
                 html += `
                     <article class="garment-card" data-garment-id="${garment.id}">

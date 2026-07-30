@@ -1,25 +1,35 @@
-import pytest
-from backend.models.schemas import (
-    GarmentCreate, GarmentRead, GarmentUpdate,
-    OutfitCreate, OutfitRead,
-    StyleRuleCreate, StyleRuleRead,
-    UserFeedbackCreate,
-    OutfitRecommendationRequest,
-    PackingRequest,
-    EnhanceRequest, EnhanceResponse,
-    HealthResponse,
-)
-from backend.models.garment import (
-    GarmentType, Season, FormalityLevel, PatternType,
-    FeedbackType, AIProviderType
-)
-from pydantic import ValidationError
 from datetime import datetime
+
+import pytest
+from pydantic import ValidationError
+
+from backend.models.schemas import (
+    AIProviderType,
+    EnhanceRequest,
+    EnhanceResponse,
+    FeedbackType,
+    FormalityLevel,
+    GarmentCreate,
+    GarmentType,
+    GarmentUpdate,
+    HealthResponse,
+    OutfitCreate,
+    OutfitRead,
+    OutfitRecommendationRequest,
+    OutfitUpdate,
+    PackingRequest,
+    PatternType,
+    Season,
+    StyleRuleCreate,
+    StyleRuleType,
+    StyleRuleUpdate,
+    UserFeedbackCreate,
+)
 
 
 class TestGarmentSchemas:
     """Test garment-related Pydantic schemas."""
-    
+
     def test_garment_create_valid(self):
         """Test valid garment creation."""
         garment = GarmentCreate(
@@ -34,7 +44,7 @@ class TestGarmentSchemas:
         assert garment.name == "Test Shirt"
         assert garment.type == "top"
         assert garment.dominant_color_hex == "#0000FF"
-    
+
     def test_garment_create_invalid_color_hex(self):
         """Test invalid hex color validation."""
         with pytest.raises(ValidationError) as exc_info:
@@ -45,7 +55,7 @@ class TestGarmentSchemas:
                 dominant_color_hex="not-a-hex"
             )
         assert "dominant_color_hex" in str(exc_info.value)
-    
+
     def test_garment_create_invalid_formality(self):
         """Test formality level validation."""
         with pytest.raises(ValidationError):
@@ -56,14 +66,14 @@ class TestGarmentSchemas:
                 dominant_color_hex="#FF0000",
                 formality=6  # Max is 5
             )
-    
+
     def test_garment_update_partial(self):
         """Test partial garment update."""
         update = GarmentUpdate(name="New Name", brand="New Brand")
         assert update.name == "New Name"
         assert update.brand == "New Brand"
         assert update.type is None
-    
+
     def test_garment_read_from_attributes(self):
         """Test GarmentRead model with from_attributes."""
         # This would work with actual ORM objects
@@ -72,7 +82,7 @@ class TestGarmentSchemas:
 
 class TestOutfitSchemas:
     """Test outfit-related schemas."""
-    
+
     def test_outfit_create_valid(self):
         """Test valid outfit creation."""
         outfit = OutfitCreate(
@@ -84,7 +94,7 @@ class TestOutfitSchemas:
         assert outfit.name == "Work Outfit"
         assert outfit.occasion == "work"
         assert len(outfit.garment_ids) == 3
-    
+
     def test_outfit_create_min_garments(self):
         """Test minimum garment requirement."""
         with pytest.raises(ValidationError):
@@ -93,7 +103,7 @@ class TestOutfitSchemas:
                 occasion="casual",
                 garment_ids=[1]  # Min 1, but should probably be more
             )
-    
+
     def test_outfit_update(self):
         """Test outfit update."""
         update = OutfitUpdate(score=85.5, name="Updated Name")
@@ -103,19 +113,20 @@ class TestOutfitSchemas:
 
 class TestStyleRuleSchemas:
     """Test style rule schemas."""
-    
+
     def test_style_rule_create(self):
         """Test style rule creation."""
         rule = StyleRuleCreate(
             name="color_harmony_test",
             description="Test rule",
-            rule_type="color_harmony",
+            rule_type=StyleRuleType.COLOR_HARMONY,
             weight=1.5,
-            parameters='{"method": "complementary"}'
+            parameters={"method": "complementary"},
         )
         assert rule.name == "color_harmony_test"
         assert rule.weight == 1.5
-    
+        assert rule.rule_type == StyleRuleType.COLOR_HARMONY
+
     def test_style_rule_update(self):
         """Test style rule update."""
         update = StyleRuleUpdate(weight=2.0, is_active=False)
@@ -125,7 +136,7 @@ class TestStyleRuleSchemas:
 
 class TestFeedbackSchemas:
     """Test feedback schemas."""
-    
+
     def test_user_feedback_create_outfit(self):
         """Test outfit feedback creation."""
         feedback = UserFeedbackCreate(
@@ -137,7 +148,7 @@ class TestFeedbackSchemas:
         assert feedback.outfit_id == 1
         assert feedback.rating == 1
         assert feedback.feedback_type == "like"
-    
+
     def test_user_feedback_create_garment(self):
         """Test garment feedback creation."""
         feedback = UserFeedbackCreate(
@@ -147,7 +158,7 @@ class TestFeedbackSchemas:
         )
         assert feedback.garment_id == 5
         assert feedback.rating == -1
-    
+
     def test_feedback_rating_validation(self):
         """Test rating must be -1, 0, or 1."""
         with pytest.raises(ValidationError):
@@ -160,7 +171,7 @@ class TestFeedbackSchemas:
 
 class TestRecommendationSchemas:
     """Test recommendation request/response schemas."""
-    
+
     def test_recommendation_request_valid(self):
         """Test valid recommendation request."""
         req = OutfitRecommendationRequest(
@@ -173,7 +184,7 @@ class TestRecommendationSchemas:
         assert req.occasion == "party"
         assert req.top_n == 5
         assert req.exclude_garment_ids == [1, 2]
-    
+
     def test_recommendation_request_defaults(self):
         """Test default values."""
         req = OutfitRecommendationRequest(occasion="casual")
@@ -184,7 +195,7 @@ class TestRecommendationSchemas:
 
 class TestPackingSchemas:
     """Test packing request/response schemas."""
-    
+
     def test_packing_request_valid(self):
         """Test valid packing request."""
         req = PackingRequest(
@@ -195,22 +206,22 @@ class TestPackingSchemas:
         )
         assert req.days == 5
         assert req.max_items == 15
-    
+
     def test_packing_request_validation(self):
         """Test packing request validation."""
         with pytest.raises(ValidationError):
             PackingRequest(days=0)  # Must be >= 1
-        
+
         with pytest.raises(ValidationError):
             PackingRequest(days=31)  # Must be <= 30
-        
+
         with pytest.raises(ValidationError):
             PackingRequest(max_items=3)  # Must be >= 5
 
 
 class TestAIProviderSchemas:
     """Test AI provider schemas."""
-    
+
     def test_enhance_request(self):
         """Test enhance request."""
         req = EnhanceRequest(
@@ -229,7 +240,7 @@ class TestAIProviderSchemas:
         )
         assert req.context == "Friday night out"
         assert req.user_preferences["preferred_colors"] == ["blue", "black"]
-    
+
     def test_enhance_response(self):
         """Test enhance response."""
         resp = EnhanceResponse(
@@ -243,7 +254,7 @@ class TestAIProviderSchemas:
 
 class TestHealthResponse:
     """Test health check response."""
-    
+
     def test_health_response(self):
         """Test health response."""
         resp = HealthResponse(
@@ -259,35 +270,35 @@ class TestHealthResponse:
 
 class TestEnums:
     """Test enum values."""
-    
+
     def test_garment_type_enum(self):
         """Test garment type enum."""
         assert GarmentType.TOP == "top"
         assert GarmentType.BOTTOM == "bottom"
         assert GarmentType.DRESS == "dress"
-    
+
     def test_season_enum(self):
         """Test season enum."""
         assert Season.SPRING == "spring"
         assert Season.ALL_SEASON == "all_season"
-    
+
     def test_formality_enum(self):
         """Test formality enum."""
         assert FormalityLevel.CASUAL == 1
         assert FormalityLevel.FORMAL == 4
         assert FormalityLevel.BLACK_TIE == 5
-    
+
     def test_pattern_enum(self):
         """Test pattern enum."""
         assert PatternType.SOLID == "solid"
         assert PatternType.STRIPED == "striped"
         assert PatternType.FLORAL == "floral"
-    
+
     def test_feedback_type_enum(self):
         """Test feedback type enum."""
         assert FeedbackType.LIKE == "like"
         assert FeedbackType.DISLIKE == "dislike"
-    
+
     def test_ai_provider_enum(self):
         """Test AI provider enum."""
         assert AIProviderType.LOCAL == "local"

@@ -121,6 +121,63 @@ class OutfitComposer:
 
         return diverse[:top_n]
 
+    def recommend(
+        self,
+        occasion: str = "casual",
+        season: str = "all_season",
+        formality: int | None = None,
+        garment_ids: list[int] | None = None,
+        exclude_garment_ids: list[int] | None = None,
+        top_n: int = 5,
+    ) -> list[tuple[Outfit, float]]:
+        """
+        Generate outfit recommendations matching the API endpoint expectations.
+        Returns list of (outfit, score) tuples.
+        """
+        candidates = self.compose_outfits(
+            occasion=occasion,
+            season=season,
+            formality=formality,
+            top_n=top_n,
+            exclude_garment_ids=exclude_garment_ids,
+        )
+
+        # Create actual Outfit objects from candidates
+        results = []
+        for candidate in candidates:
+            outfit = self._create_outfit_from_candidate(candidate)
+            if outfit:
+                results.append((outfit, candidate.score.total))
+
+        return results
+
+    def _create_outfit_from_candidate(self, candidate: OutfitCandidate) -> Outfit | None:
+        """Create an Outfit database object from a candidate."""
+        try:
+            outfit = Outfit(
+                name=f"{candidate.occasion.title()} Outfit",
+                occasion=candidate.occasion,
+                season=candidate.season,
+                score=candidate.score.total,
+            )
+            self.session.add(outfit)
+            self.session.commit()
+            self.session.refresh(outfit)
+
+            # Add garment links
+            for pos, garment in enumerate(candidate.garments):
+                link = OutfitGarmentLink(
+                    outfit_id=outfit.id, garment_id=garment.id, position=pos
+                )
+                self.session.add(link)
+
+            self.session.commit()
+            self.session.refresh(outfit)
+            return outfit
+        except Exception:
+            self.session.rollback()
+            return None
+
     def _filter_garments(
         self,
         garments: list[Garment],
@@ -295,7 +352,7 @@ class OutfitComposer:
             select(OutfitGarmentLink).where(OutfitGarmentLink.outfit_id == outfit_id)
         ).all()
 
-        garment_ids = [l.garment_id for l in links]
+        garment_ids = [link.garment_id for link in links]
         garments = self.garment_repo.get_by_ids(garment_ids)
 
         # Score it
@@ -306,18 +363,33 @@ class OutfitComposer:
             "name": outfit.name,
             "occasion": outfit.occasion,
             "season": outfit.season,
+            "formality": outfit.formality,
             "score": score.total,
             "score_breakdown": score.to_dict(),
+            "is_packing": outfit.is_packing,
+            "created_at": outfit.created_at,
+            "updated_at": outfit.updated_at,
             "garments": [
                 {
                     "id": g.id,
                     "name": g.name,
+                    "brand": g.brand,
                     "type": g.type,
-                    "color_hex": g.color_hex,
                     "color_name": g.color_name,
+                    "dominant_color_hex": g.dominant_color_hex,
                     "pattern": g.pattern,
                     "formality": g.formality,
-                    "image_path": g.image_path,
+                    "season": g.season,
+                    "material": g.material,
+                    "size": g.size,
+                    "is_favorite": g.is_favorite,
+                    "wear_count": g.wear_count,
+                    "raw_image_path": g.raw_image_path,
+                    "processed_image_path": g.processed_image_path,
+                    "segmentation_mask_path": g.mask_image_path,
+                    "notes": None,
+                    "created_at": g.created_at,
+                    "updated_at": g.updated_at,
                 }
                 for g in garments
             ],
