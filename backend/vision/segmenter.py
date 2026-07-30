@@ -1,10 +1,11 @@
 
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
-import requests
+import requests  # type: ignore[import-untyped]
 from PIL import Image
-from segment_anything import SamPredictor, sam_model_registry
+from segment_anything import SamPredictor, sam_model_registry  # type: ignore[import-untyped]
 
 from backend.core.config import get_settings
 
@@ -12,7 +13,7 @@ from backend.core.config import get_settings
 class SAMSegmenter:
     """Segment Anything Model (SAM) for garment segmentation."""
 
-    def __init__(self, model_type: str = None, checkpoint_path: str = None):
+    def __init__(self, model_type: Optional[str] = None, checkpoint_path: Optional[str] = None):
         self.settings = get_settings()
         self.model_type = model_type or self.settings.sam_model_type
         self.checkpoint_path = checkpoint_path or self._get_checkpoint_path()

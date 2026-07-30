@@ -165,7 +165,7 @@ async def create_garment(
 @router.get("/garments", response_model=list[GarmentRead])
 async def list_garments(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=1000),
     type: str | None = Query(None),
     season: str | None = Query(None),
     session: Session = Depends(get_session),
@@ -238,7 +238,7 @@ async def create_outfit(outfit: OutfitCreate, session: Session = Depends(get_ses
 @router.get("/outfits", response_model=list[OutfitRead])
 async def list_outfits(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=1000),
     occasion: str | None = Query(None),
     season: str | None = Query(None),
     is_packing: bool | None = Query(None),

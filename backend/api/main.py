@@ -91,6 +91,20 @@ def create_app() -> FastAPI:
     async def health():
         return {"status": "healthy", "version": settings.app_version}
 
+    # SPA fallback - serve index.html for all non-API, non-static routes
+    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    @app.head("/{full_path:path}", response_class=HTMLResponse)
+    async def spa_fallback(full_path: str):
+        # Skip API routes
+        if full_path.startswith("api/") or full_path.startswith("static/") or full_path.startswith("images/"):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        index_path = Path(settings.frontend_dir) / "index.html"
+        if index_path.exists():
+            return index_path.read_text()
+        return "<h1>Smart Wardrobe Outfit System</h1><p>Frontend not built.</p>"
+
     return app
 
 
