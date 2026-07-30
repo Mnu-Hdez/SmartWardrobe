@@ -12,9 +12,9 @@ from backend.core.config import get_settings
 class SAMSegmenter:
     """Segment Anything Model (SAM) for garment segmentation."""
 
-    def __init__(self, model_type: str = "vit_h", checkpoint_path: str = None):
+    def __init__(self, model_type: str = None, checkpoint_path: str = None):
         self.settings = get_settings()
-        self.model_type = model_type
+        self.model_type = model_type or self.settings.sam_model_type
         self.checkpoint_path = checkpoint_path or self._get_checkpoint_path()
         self.predictor = None
         self._load_model()

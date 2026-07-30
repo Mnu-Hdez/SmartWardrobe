@@ -5,8 +5,6 @@ from contextlib import contextmanager
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from backend.models.schemas import StyleRuleType
-
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/db/smart_wardrobe.db")
 

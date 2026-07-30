@@ -8,7 +8,7 @@ from PIL import Image
 
 from backend.core.config import get_settings
 from backend.database.connection import get_db_session
-from backend.models.schemas import GarmentCreate, FormalityLevel, Season
+from backend.models.schemas import FormalityLevel, GarmentCreate, Season
 from backend.repositories import GarmentRepository
 from backend.vision.classifier import CLIPClassifier
 from backend.vision.color_extractor import ColorExtractor, extract_colors_from_image

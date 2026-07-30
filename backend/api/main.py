@@ -69,6 +69,15 @@ def create_app() -> FastAPI:
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+    # Mount images directories for serving garment images
+    images_raw_dir = Path(settings.images_raw_dir)
+    if images_raw_dir.exists():
+        app.mount("/images/raw", StaticFiles(directory=str(images_raw_dir)), name="images_raw")
+
+    images_processed_dir = Path(settings.images_processed_garments_dir)
+    if images_processed_dir.exists():
+        app.mount("/images/processed/garments", StaticFiles(directory=str(images_processed_dir)), name="images_processed_garments")
+
     # Serve frontend index.html for SPA
     @app.get("/", response_class=HTMLResponse)
     async def serve_frontend():

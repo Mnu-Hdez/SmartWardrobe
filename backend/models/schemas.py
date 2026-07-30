@@ -195,7 +195,13 @@ class StyleRuleRead(StyleRuleBase):
     def parse_parameters(cls, v):
         import json
         if isinstance(v, str):
-            return json.loads(v)
+            v = v.strip()
+            if not v:
+                return {}
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return {}
         return v or {}
 
 

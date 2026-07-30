@@ -141,14 +141,14 @@ class OutfitComposer:
             top_n=top_n,
             exclude_garment_ids=exclude_garment_ids,
         )
-        
+
         # Create actual Outfit objects from candidates
         results = []
         for candidate in candidates:
             outfit = self._create_outfit_from_candidate(candidate)
             if outfit:
                 results.append((outfit, candidate.score.total))
-        
+
         return results
 
     def _create_outfit_from_candidate(self, candidate: OutfitCandidate) -> Outfit | None:
@@ -163,14 +163,14 @@ class OutfitComposer:
             self.session.add(outfit)
             self.session.commit()
             self.session.refresh(outfit)
-            
+
             # Add garment links
             for pos, garment in enumerate(candidate.garments):
                 link = OutfitGarmentLink(
                     outfit_id=outfit.id, garment_id=garment.id, position=pos
                 )
                 self.session.add(link)
-            
+
             self.session.commit()
             self.session.refresh(outfit)
             return outfit
@@ -376,14 +376,14 @@ class OutfitComposer:
                     "brand": g.brand,
                     "type": g.type,
                     "color_name": g.color_name,
-                    "dominant_color_hex": g.color_hex,
+                    "dominant_color_hex": g.dominant_color_hex,
                     "pattern": g.pattern,
                     "formality": g.formality,
                     "season": g.season,
                     "material": g.material,
                     "size": g.size,
-                    "is_favorite": False,
-                    "wear_count": 0,
+                    "is_favorite": g.is_favorite,
+                    "wear_count": g.wear_count,
                     "raw_image_path": g.raw_image_path,
                     "processed_image_path": g.processed_image_path,
                     "segmentation_mask_path": g.mask_image_path,

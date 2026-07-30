@@ -1,13 +1,11 @@
 from datetime import datetime
 from enum import IntEnum, StrEnum
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
-if TYPE_CHECKING:
-    from backend.models.outfit import Outfit, OutfitGarmentLink
-    from backend.models.style_rule import StyleRule
-    from backend.models.user_feedback import UserFeedback
+# All relationships use string references to avoid circular imports
+# Related tables are defined in this same file
 
 
 class GarmentType(StrEnum):
@@ -51,7 +49,7 @@ class Garment(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(max_length=100)
     type: GarmentType = Field(index=True)
-    color_hex: str = Field(max_length=7)  # #RRGGBB
+    dominant_color_hex: str = Field(max_length=7)  # #RRGGBB
     color_name: str = Field(max_length=50)
     secondary_color_hex: str | None = Field(default=None, max_length=7)
     pattern: PatternType = Field(default=PatternType.SOLID)
@@ -77,6 +75,10 @@ class Garment(SQLModel, table=True):
 
     # Bias learning from feedback
     style_bias: float = Field(default=0.0)  # -1 to 1, learned from feedback
+
+    # Frontend fields
+    is_favorite: bool = Field(default=False)
+    wear_count: int = Field(default=0)
 
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)

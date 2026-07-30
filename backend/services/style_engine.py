@@ -134,7 +134,7 @@ class StyleEngine:
         if len(garments) < 2:
             return 100.0, {"method": "single_item", "score": 100}
 
-        colors = [g.color_hex for g in garments]
+        colors = [g.dominant_color_hex for g in garments]
 
         # Convert to HSV for analysis
         hsv_colors = [self._hex_to_hsv(c) for c in colors]

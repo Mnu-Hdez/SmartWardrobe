@@ -63,7 +63,7 @@ async def create_garment(
     name: str = Form(...),
     type: str = Form(...),
     color_name: str = Form(...),
-    color_hex: str = Form(...),
+    dominant_color_hex: str = Form(...),
     pattern: str = Form("solid"),
     formality: int = Form(1),
     season: str = Form("all_season"),
@@ -95,12 +95,12 @@ async def create_garment(
     # Process with vision pipeline
     # 1. Segment garment
     segmenter = SAMSegmenter()
-    mask, masked_img, seg_conf = segmenter.segment_auto(Image.open(raw_path))
+    mask, masked_img, seg_conf = segmenter.segment(Image.open(raw_path))
 
-    # Save processed image to PROCESSED storage
+    # Save processed image to PROCESSED storage as PNG (supports transparency)
     processed_dir = Path(settings.images_processed_garments_dir)
     processed_dir.mkdir(parents=True, exist_ok=True)
-    processed_filename = f"{uuid.uuid4()}{ext}"
+    processed_filename = f"{uuid.uuid4()}.png"
     processed_path = processed_dir / processed_filename
     masked_img.save(processed_path)
 
@@ -116,6 +116,30 @@ async def create_garment(
     # 3. Extract colors
     color_info = extract_colors_from_image(str(processed_path), str(mask_path))
 
+    # Map string formality to IntEnum
+    from backend.models.schemas import FormalityLevel
+    formality_map = {
+        "very casual": FormalityLevel.CASUAL,
+        "casual": FormalityLevel.CASUAL,
+        "smart casual": FormalityLevel.SMART_CASUAL,
+        "business casual": FormalityLevel.BUSINESS_CASUAL,
+        "formal": FormalityLevel.FORMAL,
+        "very formal": FormalityLevel.BLACK_TIE,
+    }
+    formality_level = formality_map.get(classification["formality"].lower(), FormalityLevel.CASUAL)
+
+    # Map season string to Season enum
+    from backend.models.schemas import Season
+    season_map = {
+        "spring": Season.SPRING,
+        "summer": Season.SUMMER,
+        "autumn": Season.AUTUMN,
+        "fall": Season.AUTUMN,
+        "winter": Season.WINTER,
+        "all season": Season.ALL_SEASON,
+    }
+    season_enum = season_map.get(classification["season"].lower(), Season.ALL_SEASON)
+
     # Create garment record with DUAL image paths
     garment_data = GarmentCreate(
         name=name,
@@ -123,8 +147,8 @@ async def create_garment(
         color_name=color_info["dominant_color_name"],
         dominant_color_hex=color_info["dominant_color_hex"],
         pattern=classification["pattern"],
-        formality=classification["formality"],
-        season=classification["season"],
+        formality=formality_level,
+        season=season_enum,
         brand=brand,
         size=size,
         material=material,
@@ -296,7 +320,7 @@ async def recommend_outfits(
 @router.post("/enhance", response_model=EnhanceResponse)
 async def enhance_recommendation(request: EnhanceRequest, session: Session = Depends(get_session)):
     """Enhance an outfit recommendation with AI styling advice."""
-    provider = AIProviderFactory.get_available_provider()
+    provider = await AIProviderFactory.get_available_provider()
     result = await provider.enhance_recommendation(
         outfit=request.outfit, context=request.context, user_preferences=request.user_preferences
     )

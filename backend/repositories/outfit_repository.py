@@ -1,8 +1,8 @@
 
 from sqlmodel import Session, select
 
-from backend.models.garment import Outfit, OutfitGarmentLink, StyleRule
-from backend.models.schemas import OutfitCreate, OutfitUpdate, StyleRuleCreate, StyleRuleUpdate
+from backend.models.garment import Outfit, OutfitGarmentLink
+from backend.models.schemas import OutfitCreate, OutfitUpdate
 
 
 class OutfitRepository:
