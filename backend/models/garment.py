@@ -1,46 +1,17 @@
 from datetime import datetime
-from enum import IntEnum, StrEnum
 from typing import Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
+from backend.domain.enums import (
+    FormalityLevel,
+    GarmentType,
+    PatternType,
+    Season,
+)
+
 # All relationships use string references to avoid circular imports
 # Related tables are defined in this same file
-
-
-class GarmentType(StrEnum):
-    TOP = "top"
-    BOTTOM = "bottom"
-    DRESS = "dress"
-    OUTERWEAR = "outerwear"
-    SHOES = "shoes"
-    ACCESSORY = "accessory"
-
-
-class Season(StrEnum):
-    SPRING = "spring"
-    SUMMER = "summer"
-    AUTUMN = "autumn"
-    WINTER = "winter"
-    ALL_SEASON = "all_season"
-
-
-class FormalityLevel(IntEnum):
-    CASUAL = 1
-    SMART_CASUAL = 2
-    BUSINESS_CASUAL = 3
-    FORMAL = 4
-    BLACK_TIE = 5
-
-
-class PatternType(StrEnum):
-    SOLID = "solid"
-    STRIPED = "striped"
-    CHECKERED = "checkered"
-    FLORAL = "floral"
-    POLKA_DOT = "polka_dot"
-    GEOMETRIC = "geometric"
-    ABSTRACT = "abstract"
 
 
 class Garment(SQLModel, table=True):

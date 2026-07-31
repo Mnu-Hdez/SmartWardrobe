@@ -10,51 +10,31 @@ from backend.core.config import get_settings
 from backend.database.connection import get_db_session
 from backend.models.schemas import FormalityLevel, GarmentCreate, Season
 from backend.repositories import GarmentRepository
-from backend.vision.classifier import CLIPClassifier
-from backend.vision.color_extractor import ColorExtractor, extract_colors_from_image
-from backend.vision.segmenter import SAMSegmenter
+from backend.vision.pipeline import create_default_pipeline
 
 
 class IngestionPipeline:
-    """Orchestrates the complete garment ingestion pipeline."""
+    """Orchestrates the complete garment ingestion pipeline using VisionPipeline stages."""
 
     def __init__(self):
         self.settings = get_settings()
-        self.segmenter = None
-        self.classifier = None
-        self.color_extractor = None
-        self._init_models()
-
-    def _init_models(self):
-        """Initialize vision models lazily."""
-        try:
-            self.segmenter = SAMSegmenter(model_type=self.settings.sam_model_type)
-        except Exception as e:
-            print(f"Warning: Could not load SAM segmenter: {e}")
-            self.segmenter = None
-
-        try:
-            self.classifier = CLIPClassifier(
-                model_name=self.settings.clip_model,
-                pretrained=self.settings.clip_pretrained,
-                device=self.settings.device,
-            )
-        except Exception as e:
-            print(f"Warning: Could not load CLIP classifier: {e}")
-            self.classifier = None
-
-        self.color_extractor = ColorExtractor()
+        self.pipeline = create_default_pipeline(
+            sam_model_type=self.settings.sam_model_type,
+            clip_model=self.settings.clip_model,
+            clip_pretrained=self.settings.clip_pretrained,
+            clip_device=self.settings.device,
+        )
 
     def process_garment(
         self,
         image_path: str,
-        name: str = None,
-        brand: str = None,
-        size: str = None,
-        material: str = None,
-        price: float = None,
-        purchase_date: datetime = None,
-        notes: str = None,
+        name: str | None = None,
+        brand: str | None = None,
+        size: str | None = None,
+        material: str | None = None,
+        price: float | None = None,
+        purchase_date: datetime | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any]:
         """
         Process a garment image through the full pipeline:
@@ -90,33 +70,20 @@ class IngestionPipeline:
         # Open image
         image = Image.open(image_path).convert("RGB")
 
-        # 1. Segmentation
-        mask_path = None
-        masked_image_path = None
-        segmentation_confidence = 0.0
+        # Run vision pipeline
+        context = {
+            "garment_id": garment_id,
+            "processed_dir": str(processed_dir),
+            "image": image,
+        }
+        result = self.pipeline.run(image, context)
 
-        if self.segmenter:
-            try:
-                mask, masked_img, seg_score = self.segmenter.segment(image)
+        # Extract results from pipeline context
+        masked_image_path = result.get("masked_image_path")
+        classification = result.get("classification", {})
+        color_info = result.get("color_info", {})
 
-                # Save masked image to PROCESSED storage as PNG (supports transparency)
-                masked_image_path = str(processed_dir / f"{garment_id}_masked.png")
-                masked_img.save(masked_image_path)
-
-                # Save mask
-                mask_path = str(processed_dir / f"{garment_id}_mask.png")
-                Image.fromarray((mask * 255).astype("uint8")).save(mask_path)
-
-                segmentation_confidence = seg_score
-                print(f"Segmentation confidence: {seg_score:.2f}")
-            except Exception as e:
-                print(f"Segmentation failed: {e}")
-        else:
-            # Use original image as fallback
-            masked_image_path = str(processed_dir / f"{garment_id}_masked{original_ext}")
-            image.save(masked_image_path)
-
-        # 2. Classification
+        # Default classification
         classification = {
             "type": "top",
             "color": "black",
@@ -124,35 +91,18 @@ class IngestionPipeline:
             "formality": "casual",
             "season": "all_season",
             "overall_confidence": 0.5,
+            **classification,
         }
 
-        if self.classifier:
-            try:
-                # Use masked image for classification if available
-                classify_image = Image.open(masked_image_path) if masked_image_path else image
-                classification = self.classifier.classify(classify_image)
-                print(
-                    f"Classification: {classification['type']} ({classification['type_confidence']:.2f})"
-                )
-            except Exception as e:
-                print(f"Classification failed: {e}")
-
-        # 3. Color extraction
+        # Default color info
         color_info = {
             "dominant_color_hex": "#000000",
             "dominant_color_name": "black",
             "palette": [],
+            **color_info,
         }
 
-        try:
-            color_info = extract_colors_from_image(masked_image_path or str(stored_raw), mask_path)
-            print(
-                f"Dominant color: {color_info['dominant_color_name']} ({color_info['dominant_color_hex']})"
-            )
-        except Exception as e:
-            print(f"Color extraction failed: {e}")
-
-        # 4. Create garment record with DUAL image paths
+        # Create garment record with DUAL image paths
         garment_data = GarmentCreate(
             name=name or f"Garment {garment_id}",
             brand=brand,
@@ -168,12 +118,11 @@ class IngestionPipeline:
             purchase_date=purchase_date,
             notes=notes,
             raw_image_path=str(stored_raw),  # RAW: original for display
-            processed_image_path=masked_image_path
-            or str(stored_raw),  # PROCESSED: segmented for AI
-            segmentation_mask_path=mask_path,
+            processed_image_path=result.get("masked_image_path") or str(stored_raw),  # PROCESSED: segmented for AI
+            segmentation_mask_path=result.get("mask_path"),
         )
 
-        # 5. Save to database
+        # Save to database
         with get_db_session() as session:
             repo = GarmentRepository(session)
             garment = repo.create(garment_data)
@@ -187,15 +136,18 @@ class IngestionPipeline:
                     "formality": classification.get("formality_confidence"),
                     "season": classification.get("season_confidence"),
                     "overall": classification.get("overall_confidence"),
-                    "segmentation": segmentation_confidence,
+                    "segmentation": result.get("segmentation_confidence"),
                 }
             )
 
             # Store CLIP embedding if available
-            if self.classifier and masked_image_path:
+            if masked_image_path := result.get("masked_image_path"):
                 try:
                     classify_image = Image.open(masked_image_path)
-                    embedding = self.classifier.get_embedding(classify_image)
+                    # Note: In production, reuse classifier from pipeline
+                    from backend.vision.classifier import CLIPClassifier
+                    classifier = CLIPClassifier()
+                    embedding = classifier.get_embedding(classify_image)
                     garment.clip_embedding = json.dumps(embedding.tolist())
                 except Exception as e:
                     print(f"Embedding extraction failed: {e}")
@@ -214,12 +166,12 @@ class IngestionPipeline:
             "formality": garment.formality,
             "season": garment.season,
             "raw_image": str(stored_raw),
-            "processed_image": masked_image_path,
-            "mask_image": mask_path,
+            "processed_image": result.get("masked_image_path"),
+            "mask_image": result.get("mask_path"),
             "confidence_scores": json.loads(garment.confidence_scores)
             if garment.confidence_scores
             else {},
-            "palette": color_info["palette"],
+            "palette": result.get("color_info", {}).get("palette", []),
         }
 
     def _formality_to_level(self, formality: str) -> FormalityLevel:
@@ -264,3 +216,4 @@ class IngestionPipeline:
 def create_ingestion_pipeline() -> IngestionPipeline:
     """Factory function."""
     return IngestionPipeline()
+

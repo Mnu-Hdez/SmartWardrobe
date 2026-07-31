@@ -40,7 +40,7 @@ class AIProviderFactory:
 
         if settings.ai_provider == "nim":
             nim_provider = NVIDIANIMProvider()
-            if await nim_provider.is_available():
+            if await nim_provider.health_check():
                 cls._instance = nim_provider
                 cls._provider_name = "nim"
                 return nim_provider

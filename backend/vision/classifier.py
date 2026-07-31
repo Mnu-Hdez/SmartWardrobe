@@ -1,14 +1,14 @@
 from typing import Any
 
 import numpy as np
-import open_clip
+import open_clip  # type: ignore[import-untyped]
 import torch
 from PIL import Image
 
 from backend.core.config import get_settings
 
 # Default labels for classification
-GARMENT_TYPES = [
+GARMENT_TYPES: list[str] = [
     "t-shirt",
     "shirt",
     "blouse",
@@ -104,13 +104,13 @@ class CLIPClassifier:
         self.pretrained = pretrained
         self.device = device if torch.cuda.is_available() else "cpu"
 
-        self.model = None
-        self.preprocess = None
-        self.tokenizer = None
+        self.model: Any = None
+        self.preprocess: Any = None
+        self.tokenizer: Any = None
+        self._text_embeddings: dict[str, tuple[list[str], torch.Tensor]] = {}
         self._load_model()
 
         # Pre-compute text embeddings for all labels
-        self._text_embeddings = {}
         self._compute_text_embeddings()
 
     def _load_model(self):

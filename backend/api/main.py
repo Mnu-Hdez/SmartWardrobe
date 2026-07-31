@@ -69,6 +69,11 @@ def create_app() -> FastAPI:
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+    # Mount templates for SPA router (kiosk.html, settings.html)
+    templates_dir = Path(settings.frontend_dir) / "templates"
+    if templates_dir.exists():
+        app.mount("/templates", StaticFiles(directory=str(templates_dir)), name="templates")
+
     # Mount images directories for serving garment images
     images_raw_dir = Path(settings.images_raw_dir)
     if images_raw_dir.exists():
@@ -91,12 +96,12 @@ def create_app() -> FastAPI:
     async def health():
         return {"status": "healthy", "version": settings.app_version}
 
-    # SPA fallback - serve index.html for all non-API, non-static routes
+    # SPA fallback - serve index.html for all non-API, non-static, non-template routes
     @app.get("/{full_path:path}", response_class=HTMLResponse)
     @app.head("/{full_path:path}", response_class=HTMLResponse)
     async def spa_fallback(full_path: str):
-        # Skip API routes
-        if full_path.startswith("api/") or full_path.startswith("static/") or full_path.startswith("images/"):
+        # Skip API routes, static files, templates, and images
+        if full_path.startswith("api/") or full_path.startswith("static/") or full_path.startswith("images/") or full_path.startswith("templates/"):
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Not Found")
 

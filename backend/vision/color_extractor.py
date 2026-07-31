@@ -1,9 +1,8 @@
 
+
 import numpy as np
 from colorthief import ColorThief  # type: ignore[import-untyped]
 from PIL import Image
-from sklearn.cluster import KMeans  # type: ignore[import-untyped]
-from typing import Optional
 
 
 class ColorExtractor:
@@ -12,7 +11,7 @@ class ColorExtractor:
     def __init__(self, quality: int = 10):
         self.quality = quality
 
-    def extract_dominant_color(self, image_path: str, mask_path: Optional[str] = None) -> tuple[str, str]:
+    def extract_dominant_color(self, image_path: str, mask_path: str | None = None) -> tuple[str, str]:
         """
         Extract dominant color from image.
 
@@ -32,7 +31,7 @@ class ColorExtractor:
         return hex_color, color_name
 
     def extract_palette(
-        self, image_path: str, color_count: int = 5, mask_path: Optional[str] = None
+        self, image_path: str, color_count: int = 5, mask_path: str | None = None
     ) -> list[tuple[str, str]]:
         """Extract color palette from image."""
         if mask_path:
@@ -70,7 +69,7 @@ class ColorExtractor:
         self, image_path: str, mask_path: str, color_count: int
     ) -> list[tuple[str, str]]:
         """Extract palette from masked region using k-means."""
-        from sklearn.cluster import KMeans
+        from sklearn.cluster import KMeans  # type: ignore[import-untyped]
 
         image = Image.open(image_path).convert("RGB")
         mask = Image.open(mask_path).convert("L")
@@ -173,7 +172,7 @@ class ColorExtractor:
 
 
 def extract_colors_from_image(
-    image_path: str, mask_path: Optional[str] = None, palette_size: int = 5
+    image_path: str, mask_path: str | None = None, palette_size: int = 5
 ) -> dict:
     """Convenience function to extract all color info."""
     extractor = ColorExtractor()

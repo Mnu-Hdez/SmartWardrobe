@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Smart Wardrobe - Outfit System</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
 </head>
 <body>
     <div id="app" class="app-shell">
@@ -53,10 +52,10 @@
         // Make api globally available
         window.api = api;
         
-        // Simple router
+        // Route definitions with template URLs
         const routes = {
-            '/kiosk': () => import('/static/js/kiosk.js'),
-            '/settings': () => import('/static/js/settings.js')
+            '/kiosk':    { template: '/templates/kiosk.html',    load: () => import('/static/js/kiosk.js') },
+            '/settings': { template: '/templates/settings.html', load: () => import('/static/js/settings.js') }
         };
         
         async function loadRoute(path) {
@@ -78,10 +77,21 @@
             });
             
             // Load route module
-            if (routes[path]) {
+            const route = routes[path];
+            if (route) {
                 try {
                     mainContent.innerHTML = '<div class="route-loading"><div class="spinner"></div><p>Cargando...</p></div>';
-                    await routes[path]();
+                    
+                    // First, fetch and inject the template HTML
+                    const response = await fetch(route.template);
+                    if (!response.ok) {
+                        throw new Error(`Failed to load template: ${response.status}`);
+                    }
+                    const html = await response.text();
+                    mainContent.innerHTML = html;
+                    
+                    // Then load the controller module
+                    await route.load();
                 } catch (error) {
                     console.error('Error loading route:', error);
                     mainContent.innerHTML = `

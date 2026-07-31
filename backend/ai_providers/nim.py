@@ -33,10 +33,10 @@ class NVIDIANIMProvider(AIProvider):
         return self._client
 
     def get_provider_name(self) -> str:
-        return self.name
+        return "nim"
 
     async def health_check(self) -> bool:
-        """Check if NIM API is accessible."""
+        """Check if the provider is available."""
         if not self.api_key:
             return False
         try:
