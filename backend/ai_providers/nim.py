@@ -3,11 +3,11 @@ from typing import Any
 
 import httpx
 
-from backend.ai_providers import AIProvider
+from backend.ai_providers import AIProviderProtocol
 from backend.models.schemas import GarmentRead, OutfitRead
 
 
-class NVIDIANIMProvider(AIProvider):
+class NVIDIANIMProvider:
     """NVIDIA NIM API provider for AI-enhanced recommendations."""
 
     def __init__(self, config: dict[str, Any] | None = None):

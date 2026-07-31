@@ -794,15 +794,12 @@ class KioskUI {
 }
 
 // Initialize when DOM is ready
-let kioskUI;
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        kioskUI = new KioskUI();
-    });
-} else {
-    kioskUI = new KioskUI();
+export function initKioskUI() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            window.kioskUI = new KioskUI();
+        });
+    } else {
+        window.kioskUI = new KioskUI();
+    }
 }
-
-// Export for global access
-window.kioskUI = kioskUI;

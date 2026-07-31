@@ -91,7 +91,16 @@
                     mainContent.innerHTML = html;
                     
                     // Then load the controller module
+                    console.log('Loading controller module for path:', path);
                     await route.load();
+                    console.log('Controller module loaded for path:', path);
+                    // Initialize KioskUI if it's the kiosk route
+                    if (path === '/kiosk' && typeof initKioskUI === 'function') {
+                        console.log('Initializing KioskUI for path:', path);
+                        initKioskUI();
+                    } else {
+                        console.log('Not initializing KioskUI. Path:', path, 'initKioskUI:', typeof initKioskUI);
+                    }
                 } catch (error) {
                     console.error('Error loading route:', error);
                     mainContent.innerHTML = `
