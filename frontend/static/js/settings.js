@@ -85,47 +85,71 @@ class SettingsUI {
                 this.applyFilters();
             });
         }
-        
+
         // Add garment button
         if (this.elements.addGarmentBtn) {
             this.elements.addGarmentBtn.addEventListener('click', () => this.openAddGarmentModal());
         }
-        
+
         // Select all checkbox
         if (this.elements.selectAllCheckbox) {
             this.elements.selectAllCheckbox.addEventListener('change', (e) => this.toggleSelectAll(e.target.checked));
         }
-        
+
         // Bulk delete
         if (this.elements.bulkDeleteBtn) {
             this.elements.bulkDeleteBtn.addEventListener('click', () => this.confirmBulkDelete());
         }
-        
-        // Image upload
-        if (this.elements.garmentImage) {
-            this.elements.garmentImage.addEventListener('change', (e) => this.handleImageSelect(e));
-        }
 
-        if (this.elements.imageUpload && this.elements.garmentImage) {
-            this.elements.imageUpload.addEventListener('click', (e) => {
-                // Don't trigger if clicking the remove button or preview
+        // Image upload - drag & drop
+        const upload = this.elements.imageUpload;
+        const fileInput = this.elements.garmentImage;
+        if (upload && fileInput) {
+            // Click to open
+            upload.addEventListener('click', (e) => {
                 if (!e.target.closest('.remove-image') && !e.target.closest('.image-preview')) {
-                    this.elements.garmentImage.click();
+                    fileInput.click();
+                }
+            });
+
+            // File input change
+            fileInput.addEventListener('change', (e) => this.handleImageSelect(e));
+
+            // Drag & drop
+            ['dragenter', 'dragover'].forEach(evt => {
+                upload.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    upload.classList.add('drag-active');
+                });
+            });
+            ['dragleave', 'drop'].forEach(evt => {
+                upload.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    upload.classList.remove('drag-active');
+                });
+            });
+            upload.addEventListener('drop', (e) => {
+                const file = e.dataTransfer.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    fileInput.files = e.dataTransfer.files;
+                    this.handleImageSelect({ target: fileInput });
                 }
             });
         }
-        
+
         // Remove image
-        const removeImageBtn = this.elements.imageUpload?.querySelector('.remove-image');
+        const removeImageBtn = upload?.querySelector('.remove-image');
         if (removeImageBtn) {
             removeImageBtn.addEventListener('click', () => this.clearImagePreview());
         }
-        
+
         // Add garment form
         if (this.elements.addGarmentForm) {
             this.elements.addGarmentForm.addEventListener('submit', (e) => this.handleAddGarmentSubmit(e));
         }
-        
+
         // Cancel buttons
         document.querySelectorAll('[data-modal-cancel]').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -133,7 +157,7 @@ class SettingsUI {
                 if (modal) this.closeModal(modal);
             });
         });
-        
+
         // Modal overlays
         document.querySelectorAll('.modal-overlay').forEach(overlay => {
             overlay.addEventListener('click', (e) => {
@@ -141,7 +165,7 @@ class SettingsUI {
                 if (modal) this.closeModal(modal);
             });
         });
-        
+
         // Modal close buttons
         document.querySelectorAll('.modal-close').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -149,18 +173,39 @@ class SettingsUI {
                 if (modal) this.closeModal(modal);
             });
         });
-        
+
         // Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal:not(.hidden)').forEach(modal => this.closeModal(modal));
             }
         });
-        
+
         // System config
         if (this.elements.saveConfigBtn) {
             this.elements.saveConfigBtn.addEventListener('click', () => this.saveSystemConfig());
         }
+
+        // Scroll reveal for sections (IntersectionObserver)
+        if ('IntersectionObserver' in window && !this.prefersReducedMotion()) {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('revealed');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+            document.querySelectorAll('.config-card, .touch-section, .bulk-actions').forEach(el => {
+                el.classList.add('reveal-on-scroll');
+                observer.observe(el);
+            });
+        }
+    }
+
+    prefersReducedMotion() {
+        return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     }
     
     debounce(func, wait) {
@@ -221,14 +266,22 @@ class SettingsUI {
         const end = start + this.state.pageSize;
         const pageItems = this.state.filteredGarments.slice(start, end);
         
-        if (pageItems.length === 0) {
+               if (pageItems.length === 0) {
             grid.innerHTML = `
-                <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 16px; opacity: 0.5;">
+                <div class="empty-state" style="grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; text-align: center; color: var(--text-muted);">
+                    <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="margin-bottom: 20px; opacity: 0.3;">
                         <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                        <path d="M12 5v14M5 12h14"></path>
                     </svg>
-                    <h3 style="margin-bottom: 8px; color: var(--text-secondary);">No hay prendas</h3>
-                    <p>Añade tu primera prenda para empezar</p>
+                    <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">No hay prendas</h3>
+                    <p style="margin-bottom: 24px; max-width: 300px;">Tu armario está vacío. Añade tu primera prenda para empezar a crear outfits.</p>
+                    <button class="btn btn-primary" onclick="settingsUI.openAddGarmentModal()" style="min-width: 200px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Añadir Prenda
+                    </button>
                 </div>
             `;
             return;
@@ -498,53 +551,30 @@ class SettingsUI {
         this.openModal(this.elements.addGarmentModal);
     }
     
-    handleImageSelect(event) {
-        const file = event.target.files[0];
+       handleImageSelect(event) {
+        const file = event.target.files?.[0];
         if (!file) return;
-        
+
         // Validate file type
         if (!file.type.startsWith('image/')) {
             this.showToast('Por favor selecciona una imagen válida', 'warning');
             event.target.value = '';
             return;
         }
-        
+
         // Validate file size (max 10MB)
         if (file.size > 10 * 1024 * 1024) {
             this.showToast('La imagen es demasiado grande (máx. 10MB)', 'warning');
             event.target.value = '';
             return;
         }
-        
+
         // Show preview
         const reader = new FileReader();
         reader.onload = (e) => {
             this.showImagePreview(e.target.result);
         };
         reader.readAsDataURL(file);
-    }
-    
-    showImagePreview(dataUrl) {
-        const upload = this.elements.imageUpload;
-        const placeholder = upload?.querySelector('.upload-placeholder');
-        const preview = upload?.querySelector('.image-preview');
-        const img = preview?.querySelector('#previewImage');
-        
-        if (placeholder) placeholder.classList.add('hidden');
-        if (preview) preview.classList.remove('hidden');
-        if (img) img.src = dataUrl;
-    }
-    
-       clearImagePreview() {
-        const upload = this.elements.imageUpload;
-        if (!upload) return;
-        const placeholder = upload.querySelector('.upload-placeholder');
-        const preview = upload.querySelector('.image-preview');
-        const input = upload.querySelector('#garmentImage');
-
-        if (placeholder) placeholder.classList.remove('hidden');
-        if (preview) preview.classList.add('hidden');
-        if (input) input.value = '';
     }
     
     // ========== SYSTEM CONFIGURATION ==========
@@ -740,7 +770,73 @@ class SettingsUI {
                 return '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>';
         }
     }
+
+    // Toast System
+    showToast(message, type = 'info', duration = 4000) {
+        const container = document.getElementById('toastContainer') || this.createToastContainer();
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'polite');
+        toast.innerHTML = `
+            <svg class="toast-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                ${this.getToastIcon(type)}
+            </svg>
+            <span class="toast-message">${this.escapeHtml(message)}</span>
+            <button class="toast-close" aria-label="Cerrar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        `;
+
+        toast.querySelector('.toast-close').addEventListener('click', () => {
+            toast.style.animation = 'toastOut 0.2s var(--ease-in) forwards';
+            setTimeout(() => toast.remove(), 200);
+        });
+
+        container.appendChild(toast);
+
+        // Force reflow for animation
+        toast.offsetHeight;
+
+        if (duration > 0) {
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.style.animation = 'toastOut 0.2s var(--ease-in) forwards';
+                    setTimeout(() => toast.remove(), 200);
+                }
+            }, duration);
+        }
+    }
+
+    createToastContainer() {
+        const container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        container.setAttribute('aria-live', 'polite');
+        container.setAttribute('aria-atomic', 'true');
+        document.body.appendChild(container);
+        return container;
+    }
+
+    getToastIcon(type) {
+        switch (type) {
+            case 'success':
+                return '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>';
+            case 'error':
+                return '<circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>';
+            case 'warning':
+                return '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>';
+            default:
+                return '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>';
+        }
+    }
 }
+
+
 
 // Initialize when DOM is ready — exported for SPA router
 export function initSettingsUI() {
