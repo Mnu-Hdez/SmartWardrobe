@@ -66,15 +66,24 @@ class SettingsUI {
     bindEvents() {
         // Search and filters
         if (this.elements.wardrobeSearch) {
-            this.elements.wardrobeSearch.addEventListener('input', this.debounce(() => this.applyFilters(), 300));
+            this.elements.wardrobeSearch.addEventListener('input', this.debounce(() => {
+                this.state.filters.search = this.elements.wardrobeSearch.value;
+                this.applyFilters();
+            }, 300));
         }
-        
+
         if (this.elements.wardrobeTypeFilter) {
-            this.elements.wardrobeTypeFilter.addEventListener('change', () => this.applyFilters());
+            this.elements.wardrobeTypeFilter.addEventListener('change', (e) => {
+                this.state.filters.type = e.target.value;
+                this.applyFilters();
+            });
         }
-        
+
         if (this.elements.wardrobeSeasonFilter) {
-            this.elements.wardrobeSeasonFilter.addEventListener('change', () => this.applyFilters());
+            this.elements.wardrobeSeasonFilter.addEventListener('change', (e) => {
+                this.state.filters.season = e.target.value;
+                this.applyFilters();
+            });
         }
         
         // Add garment button
@@ -96,9 +105,14 @@ class SettingsUI {
         if (this.elements.garmentImage) {
             this.elements.garmentImage.addEventListener('change', (e) => this.handleImageSelect(e));
         }
-        
-        if (this.elements.imageUpload) {
-            this.elements.imageUpload.addEventListener('click', () => this.elements.garmentImage?.click());
+
+        if (this.elements.imageUpload && this.elements.garmentImage) {
+            this.elements.imageUpload.addEventListener('click', (e) => {
+                // Don't trigger if clicking the remove button or preview
+                if (!e.target.closest('.remove-image') && !e.target.closest('.image-preview')) {
+                    this.elements.garmentImage.click();
+                }
+            });
         }
         
         // Remove image
@@ -403,12 +417,12 @@ class SettingsUI {
         const form = this.elements.addGarmentForm;
         if (!form) return;
         
-        form.garmentName?.value = garment.name || '';
-        form.garmentBrand?.value = garment.brand || '';
-        form.garmentType?.value = garment.type || '';
-        form.garmentSeason?.value = garment.season || 'all_season';
-        form.garmentSize?.value = garment.size || '';
-        form.garmentMaterial?.value = garment.material || '';
+        if (form.garmentName) form.garmentName.value = garment.name || '';
+        if (form.garmentBrand) form.garmentBrand.value = garment.brand || '';
+        if (form.garmentType) form.garmentType.value = garment.type || '';
+        if (form.garmentSeason) form.garmentSeason.value = garment.season || 'all_season';
+        if (form.garmentSize) form.garmentSize.value = garment.size || '';
+        if (form.garmentMaterial) form.garmentMaterial.value = garment.material || '';
         
         // Clear image preview
         this.clearImagePreview();
@@ -521,12 +535,13 @@ class SettingsUI {
         if (img) img.src = dataUrl;
     }
     
-    clearImagePreview() {
+       clearImagePreview() {
         const upload = this.elements.imageUpload;
-        const placeholder = upload?.querySelector('.upload-placeholder');
-        const preview = upload?.querySelector('.image-preview');
-        const input = upload?.querySelector('#garmentImage');
-        
+        if (!upload) return;
+        const placeholder = upload.querySelector('.upload-placeholder');
+        const preview = upload.querySelector('.image-preview');
+        const input = upload.querySelector('#garmentImage');
+
         if (placeholder) placeholder.classList.remove('hidden');
         if (preview) preview.classList.add('hidden');
         if (input) input.value = '';
@@ -727,16 +742,13 @@ class SettingsUI {
     }
 }
 
-// Initialize when DOM is ready
-let settingsUI;
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        settingsUI = new SettingsUI();
-    });
-} else {
-    settingsUI = new SettingsUI();
+// Initialize when DOM is ready — exported for SPA router
+export function initSettingsUI() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            window.settingsUI = new SettingsUI();
+        });
+    } else {
+        window.settingsUI = new SettingsUI();
+    }
 }
-
-// Export for global access
-window.settingsUI = settingsUI;

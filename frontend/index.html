@@ -90,16 +90,18 @@
                     const html = await response.text();
                     mainContent.innerHTML = html;
                     
-                    // Then load the controller module
+                    // Then load the controller module and capture exports
                     console.log('Loading controller module for path:', path);
-                    await route.load();
-                    console.log('Controller module loaded for path:', path);
-                    // Initialize KioskUI if it's the kiosk route
-                    if (path === '/kiosk' && typeof initKioskUI === 'function') {
-                        console.log('Initializing KioskUI for path:', path);
-                        initKioskUI();
+                    const module = await route.load();
+                    console.log('Controller module loaded for path:', path, 'exports:', Object.keys(module));
+                    if (path === '/kiosk' && module.initKioskUI) {
+                        console.log('Initializing KioskUI');
+                        module.initKioskUI();
+                    } else if (path === '/settings' && module.initSettingsUI) {
+                        console.log('Initializing SettingsUI');
+                        module.initSettingsUI();
                     } else {
-                        console.log('Not initializing KioskUI. Path:', path, 'initKioskUI:', typeof initKioskUI);
+                        console.warn('No initializer found for path:', path);
                     }
                 } catch (error) {
                     console.error('Error loading route:', error);
