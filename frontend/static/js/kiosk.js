@@ -344,7 +344,7 @@ class KioskUI {
                     <line x1="9" y1="9" x2="15" y2="15"></line>
                 </svg>
                 <h3>Error loading</h3>
-                <p>${this.escapeHtml(message)}</p>
+                <p>${escapeHtml(message)}</p>
                 <button class="btn btn-primary" onclick="kioskUI.loadOutfit()">Retry</button>
             </div>
         `;
@@ -356,7 +356,7 @@ class KioskUI {
         let html = `
             <div class="outfit-result">
                 <div class="outfit-header">
-                    <h2 class="outfit-name">${this.escapeHtml(outfit.name || 'Recommended Outfit')}</h2>
+                    <h2 class="outfit-name">${escapeHtml(outfit.name || 'Recommended Outfit')}</h2>
                     <div class="outfit-score">
                         <span class="score-value">${score.toFixed(0)}</span>
                         <span class="score-label">/100</span>
@@ -378,14 +378,14 @@ class KioskUI {
                 html += `
                     <article class="garment-card" data-garment-id="${garment.id}">
                         ${imageUrl
-                            ? `<img class="garment-image" src="${imageUrl}" alt="${this.escapeHtml(garment.name)}" loading="lazy">`
+                            ? `<img class="garment-image" src="${imageUrl}" alt="${escapeHtml(garment.name)}" loading="lazy">`
                             : `<div class="garment-image" style="background-color: ${colorHex};"></div>`
                         }
                         <div class="garment-info">
-                            <h3 class="garment-name">${this.escapeHtml(garment.name)}</h3>
+                            <h3 class="garment-name">${escapeHtml(garment.name)}</h3>
                             <div class="garment-meta">
                                 <span class="tag tag-type">${formatType(garment.type)}</span>
-                                <span class="tag tag-color" style="--tag-color: ${colorHex}">${this.escapeHtml(garment.color_name)}</span>
+                                <span class="tag tag-color" style="--tag-color: ${colorHex}">${escapeHtml(garment.color_name)}</span>
                                 <span class="tag">${formatPattern(garment.pattern)}</span>
                                 <span class="tag">${formatFormality(garment.formality)}</span>
                             </div>
@@ -419,7 +419,7 @@ class KioskUI {
                     <ul class="tips-list">
             `;
             outfit.ai_tips.forEach(tip => {
-                html += `<li class="tip-item">${this.escapeHtml(tip)}</li>`;
+                html += `<li class="tip-item">${escapeHtml(tip)}</li>`;
             });
             html += `
                     </ul>
