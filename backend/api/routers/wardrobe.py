@@ -5,9 +5,11 @@ import os
 import shutil
 import uuid
 
-from backend.database.connection import get_session
-from backend.core.config import settings
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from sqlmodel import Session
+
+from backend.core.config import settings
+from backend.database.connection import get_session
 from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
     FeedbackRequest,
@@ -37,7 +39,6 @@ from backend.repositories.garment_repo import (
     StyleRuleRepository,
 )
 from backend.services.outfit_service import OutfitService
-from sqlmodel import Session
 
 router = APIRouter(prefix="/garments", tags=["Garments"])
 

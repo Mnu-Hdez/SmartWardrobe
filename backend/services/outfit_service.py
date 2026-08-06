@@ -147,11 +147,12 @@ class OutfitService:
                 outfit_garments.append(random.choice(by_type["accessory"]))
 
             if len(outfit_garments) >= 2:
-                outfit = Outfit(
-                    name=f"{occasion.title()} Outfit", occasion=occasion, season=season, score=0.0
-                )
-                outfit.garments = outfit_garments  # type: ignore
-                outfits.append(outfit)
+                        outfit = Outfit(
+                            name=f"{occasion.title()} Outfit", occasion=occasion, season=season, score=0.0
+                        )
+                        # Store garments as transient attribute for scoring/tips
+                        outfit._garments = outfit_garments
+                        outfits.append(outfit)
 
         return outfits
 
@@ -177,7 +178,7 @@ class OutfitService:
 
     def _apply_rule(self, outfit: Outfit, rule_type: str, params: dict) -> float:
         """Apply a single style rule"""
-        garments = outfit.garments  # type: ignore
+        garments = outfit._garments if hasattr(outfit, '_garments') else []
         if not garments:
             return 0
 
@@ -235,7 +236,7 @@ class OutfitService:
     def _generate_tips(self, outfit: Outfit) -> list[str]:
         """Generate AI style tips"""
         tips = []
-        garments = outfit.garments  # type: ignore
+        garments = outfit._garments if hasattr(outfit, '_garments') else []
 
         # Color tip
         colors = set(g.color_name for g in garments)
@@ -249,7 +250,7 @@ class OutfitService:
 
         # Formality tip
         formalities = [g.formality for g in garments]
-        if max(formalities) - min(formalities) > 2:
+        if formalities and max(formalities) - min(formalities) > 2:
             tips.append("Balance formal and casual pieces - one statement piece is enough.")
 
         return tips if tips else ["Great combination! This outfit works well together."]
@@ -261,7 +262,8 @@ class OutfitService:
         # Create outfit items
         items = []
         outfit_id = saved_outfit.id or 0
-        for i, garment in enumerate(outfit.garments):  # type: ignore
+        garments = outfit._garments if hasattr(outfit, '_garments') else []
+        for i, garment in enumerate(garments):
             item = OutfitItem(outfit_id=outfit_id, garment_id=garment.id, position=i)
             items.append(item)
 
@@ -299,22 +301,20 @@ class OutfitService:
             outfit = Outfit(
                 name=f"Day {day + 1}", occasion=request.occasion, season=request.season, score=0.0
             )
-            outfit.garments = day_garments  # type: ignore
+            outfit._garments = day_garments
             outfits.append(outfit)
 
         # Save outfits
         saved_outfits = [self._save_outfit(o) for o in outfits]
 
-        # Create packing list
+        # Check packing list has versatility scores
         packing_list = []
         for g, v in scored_garments[: request.max_items]:
-            packing_list.append(
-                {
-                    "garment": g,
-                    "versatility_score": v,
-                    "days_covered": sum(1 for o in outfits if g in o.garments),  # type: ignore
-                }
-            )
+            packing_list.append({
+                "garment": g,
+                "versatility_score": v,
+                "days_covered": sum(1 for o in outfits if g in (o._garments if hasattr(o, '_garments') else [])),
+            })
 
         return {
             "outfits": saved_outfits,

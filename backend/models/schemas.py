@@ -57,7 +57,7 @@ class GarmentBase(BaseModel):
     material: str | None = Field(None, max_length=100)
     color_name: str = Field(..., max_length=50)
     color_hex: str = Field(..., pattern=r"^#[0-9A-Fa-f]{6}$")
-    dominant_color_hex: str = Field(..., pattern=r"^#[0-9A-Fa-f]{6}$")
+    dominant_color_hex: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
     pattern: str = Field(default=Pattern.SOLID)
     formality: int = Field(default=1, ge=1, le=5)
 

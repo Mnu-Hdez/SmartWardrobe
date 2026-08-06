@@ -3,13 +3,14 @@
 
 from typing import Any
 
+from sqlalchemy import and_, or_
+from sqlmodel import Session, delete, func, select
+
 from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
     GarmentUpdate,
     StyleRuleUpdate,
 )
-from sqlalchemy import and_, or_
-from sqlmodel import Session, delete, func, select
 
 
 class GarmentRepository:
