@@ -3,7 +3,8 @@ from unittest.mock import Mock
 import pytest
 from sqlmodel import Session
 
-from backend.models.garment import Garment, Outfit, OutfitGarmentLink, UserFeedback
+from backend.models.garment import Garment, Outfit
+from backend.models.schemas import OutfitGarmentLink, UserFeedback
 from backend.services.feedback_service import FeedbackService
 from backend.services.outfit_composer import OutfitComposer
 from backend.services.packing_service import PackingResult, PackingService
@@ -26,27 +27,44 @@ class TestStyleEngine:
         """Create sample garments for testing."""
         return [
             Garment(
-                id=1, name="Blue Shirt", type="top", color_name="blue",
-                color_hex="#0000FF", pattern="solid", formality=2, season="all_season",
-                style_bias=0.0
+                id=1,
+                name="Blue Shirt",
+                type="top",
+                color_name="blue",
+                color_hex="#0000FF",
+                pattern="solid",
+                formality=2,
+                season="all_season",
+                style_bias=0.0,
             ),
             Garment(
-                id=2, name="Khaki Pants", type="bottom", color_name="beige",
-                color_hex="#C2B280", pattern="solid", formality=2, season="all_season",
-                style_bias=0.0
+                id=2,
+                name="Khaki Pants",
+                type="bottom",
+                color_name="beige",
+                color_hex="#C2B280",
+                pattern="solid",
+                formality=2,
+                season="all_season",
+                style_bias=0.0,
             ),
             Garment(
-                id=3, name="Brown Shoes", type="shoes", color_name="brown",
-                color_hex="#8B4513", pattern="solid", formality=2, season="all_season",
-                style_bias=0.0
-            )
+                id=3,
+                name="Brown Shoes",
+                type="shoes",
+                color_name="brown",
+                color_hex="#8B4513",
+                pattern="solid",
+                formality=2,
+                season="all_season",
+                style_bias=0.0,
+            ),
         ]
 
     @pytest.fixture
     def sample_outfit(self):
         return Outfit(
-            id=1, name="Test Outfit", occasion="casual", season="all_season",
-            formality=2, score=0.0
+            id=1, name="Test Outfit", occasion="casual", season="all_season", formality=2, score=0.0
         )
 
     def test_score_outfit_no_garments(self, style_engine, sample_outfit):
@@ -183,15 +201,27 @@ class TestOutfitComposer:
     @pytest.fixture
     def sample_garments(self):
         return [
-            Garment(id=i, name=f"Item {i}", type=t, color_name=c, color_hex=h,
-                    pattern="solid", formality=2, season="all_season", style_bias=0.0)
-            for i, (t, c, h) in enumerate([
-                ("top", "blue", "#0000FF"),
-                ("bottom", "beige", "#C2B280"),
-                ("shoes", "brown", "#8B4513"),
-                ("outerwear", "black", "#000000"),
-                ("dress", "red", "#FF0000"),
-            ], 1)
+            Garment(
+                id=i,
+                name=f"Item {i}",
+                type=t,
+                color_name=c,
+                color_hex=h,
+                pattern="solid",
+                formality=2,
+                season="all_season",
+                style_bias=0.0,
+            )
+            for i, (t, c, h) in enumerate(
+                [
+                    ("top", "blue", "#0000FF"),
+                    ("bottom", "beige", "#C2B280"),
+                    ("shoes", "brown", "#8B4513"),
+                    ("outerwear", "black", "#000000"),
+                    ("dress", "red", "#FF0000"),
+                ],
+                1,
+            )
         ]
 
     def test_compose_outfits_empty_wardrobe(self, composer, mock_session):
@@ -281,23 +311,21 @@ class TestFeedbackService:
         mock_session.refresh = Mock()
 
         # Mock repositories
-        feedback_service.feedback_repo.create = Mock(return_value=UserFeedback(
-            id=1, outfit_id=1, rating=1, feedback_type="like"
-        ))
-        feedback_service.outfit_repo.get_by_id = Mock(return_value=Outfit(
-            id=1, score=70.0
-        ))
-        feedback_service.outfit_repo.get_with_garments = Mock(return_value=Outfit(
-            id=1, garment_links=[OutfitGarmentLink(garment_id=1), OutfitGarmentLink(garment_id=2)]
-        ))
-        feedback_service.garment_repo.get_by_id = Mock(side_effect=[
-            Garment(id=1, style_bias=0.0),
-            Garment(id=2, style_bias=0.0)
-        ])
-
-        feedback = feedback_service.rate_outfit(
-            outfit_id=1, rating=1, context="test"
+        feedback_service.feedback_repo.create = Mock(
+            return_value=UserFeedback(id=1, outfit_id=1, rating=1, feedback_type="like")
         )
+        feedback_service.outfit_repo.get_by_id = Mock(return_value=Outfit(id=1, score=70.0))
+        feedback_service.outfit_repo.get_with_garments = Mock(
+            return_value=Outfit(
+                id=1,
+                garment_links=[OutfitGarmentLink(garment_id=1), OutfitGarmentLink(garment_id=2)],
+            )
+        )
+        feedback_service.garment_repo.get_by_id = Mock(
+            side_effect=[Garment(id=1, style_bias=0.0), Garment(id=2, style_bias=0.0)]
+        )
+
+        feedback = feedback_service.rate_outfit(outfit_id=1, rating=1, context="test")
 
         assert feedback.rating == 1
         assert feedback.outfit_id == 1
@@ -305,12 +333,10 @@ class TestFeedbackService:
 
     def test_rate_garment(self, feedback_service):
         """Test rating a single garment."""
-        feedback_service.feedback_repo.create = Mock(return_value=UserFeedback(
-            id=1, garment_id=1, rating=-1, feedback_type="dislike"
-        ))
-        feedback_service.garment_repo.get_by_id = Mock(return_value=Garment(
-            id=1, style_bias=0.0
-        ))
+        feedback_service.feedback_repo.create = Mock(
+            return_value=UserFeedback(id=1, garment_id=1, rating=-1, feedback_type="dislike")
+        )
+        feedback_service.garment_repo.get_by_id = Mock(return_value=Garment(id=1, style_bias=0.0))
         feedback_service.feedback_repo.get_garment_bias = Mock(return_value=-1.0)
 
         feedback = feedback_service.rate_garment(garment_id=1, rating=-1)
@@ -333,21 +359,48 @@ class TestPackingService:
     @pytest.fixture
     def travel_garments(self):
         """Create versatile travel wardrobe."""
-        types = ["top", "top", "bottom", "bottom", "dress", "outerwear", "shoes", "shoes", "accessory"]
+        types = [
+            "top",
+            "top",
+            "bottom",
+            "bottom",
+            "dress",
+            "outerwear",
+            "shoes",
+            "shoes",
+            "accessory",
+        ]
         colors = ["blue", "white", "beige", "black", "navy", "gray", "brown", "black", "silver"]
         return [
-            Garment(id=i, name=f"{c} {t}", type=t, color_name=c, color_hex="#000000",
-                    pattern="solid", formality=2, season="all_season", style_bias=0.0)
+            Garment(
+                id=i,
+                name=f"{c} {t}",
+                type=t,
+                color_name=c,
+                color_hex="#000000",
+                pattern="solid",
+                formality=2,
+                season="all_season",
+                style_bias=0.0,
+            )
             for i, (t, c) in enumerate(zip(types, colors), 1)
         ]
 
     def test_plan_packing_basic(self, packing_service, travel_garments):
         """Test basic packing plan generation."""
         packing_service.garment_repo.get_all = Mock(return_value=travel_garments)
-        packing_service.style_engine.score_outfit = Mock(return_value=StyleScore(
-            total=80.0, color_harmony=80, formality_match=80, pattern_balance=80,
-            seasonal=80, occasion=80, user_bias=50, details={}
-        ))
+        packing_service.style_engine.score_outfit = Mock(
+            return_value=StyleScore(
+                total=80.0,
+                color_harmony=80,
+                formality_match=80,
+                pattern_balance=80,
+                seasonal=80,
+                occasion=80,
+                user_bias=50,
+                details={},
+            )
+        )
 
         result = packing_service.plan_packing(days=3, occasion="travel", max_items=10)
 
@@ -359,10 +412,18 @@ class TestPackingService:
     def test_plan_packing_respects_max_items(self, packing_service, travel_garments):
         """Test max items constraint."""
         packing_service.garment_repo.get_all = Mock(return_value=travel_garments)
-        packing_service.style_engine.score_outfit = Mock(return_value=StyleScore(
-            total=80.0, color_harmony=80, formality_match=80, pattern_balance=80,
-            seasonal=80, occasion=80, user_bias=50, details={}
-        ))
+        packing_service.style_engine.score_outfit = Mock(
+            return_value=StyleScore(
+                total=80.0,
+                color_harmony=80,
+                formality_match=80,
+                pattern_balance=80,
+                seasonal=80,
+                occasion=80,
+                user_bias=50,
+                details={},
+            )
+        )
 
         result = packing_service.plan_packing(days=5, max_items=5)
 
@@ -371,14 +432,20 @@ class TestPackingService:
     def test_plan_packing_must_include(self, packing_service, travel_garments):
         """Test must-include items."""
         packing_service.garment_repo.get_all = Mock(return_value=travel_garments)
-        packing_service.style_engine.score_outfit = Mock(return_value=StyleScore(
-            total=80.0, color_harmony=80, formality_match=80, pattern_balance=80,
-            seasonal=80, occasion=80, user_bias=50, details={}
-        ))
-
-        result = packing_service.plan_packing(
-            days=3, must_include_ids=[1, 2]
+        packing_service.style_engine.score_outfit = Mock(
+            return_value=StyleScore(
+                total=80.0,
+                color_harmony=80,
+                formality_match=80,
+                pattern_balance=80,
+                seasonal=80,
+                occasion=80,
+                user_bias=50,
+                details={},
+            )
         )
+
+        result = packing_service.plan_packing(days=3, must_include_ids=[1, 2])
 
         assert 1 in result.garment_ids_used
         assert 2 in result.garment_ids_used
@@ -386,10 +453,18 @@ class TestPackingService:
     def test_plan_packing_versatility(self, packing_service, travel_garments):
         """Test that versatile items are preferred."""
         packing_service.garment_repo.get_all = Mock(return_value=travel_garments)
-        packing_service.style_engine.score_outfit = Mock(return_value=StyleScore(
-            total=80.0, color_harmony=80, formality_match=80, pattern_balance=80,
-            seasonal=80, occasion=80, user_bias=50, details={}
-        ))
+        packing_service.style_engine.score_outfit = Mock(
+            return_value=StyleScore(
+                total=80.0,
+                color_harmony=80,
+                formality_match=80,
+                pattern_balance=80,
+                seasonal=80,
+                occasion=80,
+                user_bias=50,
+                details={},
+            )
+        )
 
         result = packing_service.plan_packing(days=3)
 
@@ -417,8 +492,7 @@ class TestPackingService:
         packing_service.garment_repo.get_all = Mock(return_value=travel_garments)
 
         suggestions = packing_service.get_item_suggestions(
-            days=3, occasion="travel", season="all_season",
-            current_garment_ids=current_ids
+            days=3, occasion="travel", season="all_season", current_garment_ids=current_ids
         )
 
         # Should not suggest already packed items

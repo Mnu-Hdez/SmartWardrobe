@@ -1,5 +1,5 @@
-from backend.api.main import create_app
+from backend.api.main import app
 
-app = create_app()
+app = app
 
 __all__ = ["app"]

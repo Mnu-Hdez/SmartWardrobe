@@ -39,7 +39,7 @@ class TestGarmentSchemas:
             dominant_color_hex="#0000FF",
             pattern="solid",
             formality=2,
-            season="all_season"
+            season="all_season",
         )
         assert garment.name == "Test Shirt"
         assert garment.type == "top"
@@ -48,12 +48,7 @@ class TestGarmentSchemas:
     def test_garment_create_invalid_color_hex(self):
         """Test invalid hex color validation."""
         with pytest.raises(ValidationError) as exc_info:
-            GarmentCreate(
-                name="Test",
-                type="top",
-                color_name="red",
-                dominant_color_hex="not-a-hex"
-            )
+            GarmentCreate(name="Test", type="top", color_name="red", dominant_color_hex="not-a-hex")
         assert "dominant_color_hex" in str(exc_info.value)
 
     def test_garment_create_invalid_formality(self):
@@ -64,7 +59,7 @@ class TestGarmentSchemas:
                 type="top",
                 color_name="red",
                 dominant_color_hex="#FF0000",
-                formality=6  # Max is 5
+                formality=6,  # Max is 5
             )
 
     def test_garment_update_partial(self):
@@ -86,10 +81,7 @@ class TestOutfitSchemas:
     def test_outfit_create_valid(self):
         """Test valid outfit creation."""
         outfit = OutfitCreate(
-            name="Work Outfit",
-            occasion="work",
-            season="all_season",
-            garment_ids=[1, 2, 3]
+            name="Work Outfit", occasion="work", season="all_season", garment_ids=[1, 2, 3]
         )
         assert outfit.name == "Work Outfit"
         assert outfit.occasion == "work"
@@ -101,7 +93,7 @@ class TestOutfitSchemas:
             OutfitCreate(
                 name="Test",
                 occasion="casual",
-                garment_ids=[1]  # Min 1, but should probably be more
+                garment_ids=[1],  # Min 1, but should probably be more
             )
 
     def test_outfit_update(self):
@@ -140,10 +132,7 @@ class TestFeedbackSchemas:
     def test_user_feedback_create_outfit(self):
         """Test outfit feedback creation."""
         feedback = UserFeedbackCreate(
-            outfit_id=1,
-            rating=1,
-            feedback_type="like",
-            context="work meeting"
+            outfit_id=1, rating=1, feedback_type="like", context="work meeting"
         )
         assert feedback.outfit_id == 1
         assert feedback.rating == 1
@@ -151,11 +140,7 @@ class TestFeedbackSchemas:
 
     def test_user_feedback_create_garment(self):
         """Test garment feedback creation."""
-        feedback = UserFeedbackCreate(
-            garment_id=5,
-            rating=-1,
-            feedback_type="dislike"
-        )
+        feedback = UserFeedbackCreate(garment_id=5, rating=-1, feedback_type="dislike")
         assert feedback.garment_id == 5
         assert feedback.rating == -1
 
@@ -165,7 +150,7 @@ class TestFeedbackSchemas:
             UserFeedbackCreate(
                 outfit_id=1,
                 rating=2,  # Invalid
-                feedback_type="like"
+                feedback_type="like",
             )
 
 
@@ -175,11 +160,7 @@ class TestRecommendationSchemas:
     def test_recommendation_request_valid(self):
         """Test valid recommendation request."""
         req = OutfitRecommendationRequest(
-            occasion="party",
-            season="summer",
-            formality=3,
-            top_n=5,
-            exclude_garment_ids=[1, 2]
+            occasion="party", season="summer", formality=3, top_n=5, exclude_garment_ids=[1, 2]
         )
         assert req.occasion == "party"
         assert req.top_n == 5
@@ -198,12 +179,7 @@ class TestPackingSchemas:
 
     def test_packing_request_valid(self):
         """Test valid packing request."""
-        req = PackingRequest(
-            days=5,
-            occasion="travel",
-            season="summer",
-            max_items=15
-        )
+        req = PackingRequest(days=5, occasion="travel", season="summer", max_items=15)
         assert req.days == 5
         assert req.max_items == 15
 
@@ -233,10 +209,10 @@ class TestAIProviderSchemas:
                 formality=2,
                 score=80.0,
                 created_at=datetime.now(),
-                updated_at=datetime.now()
+                updated_at=datetime.now(),
             ),
             context="Friday night out",
-            user_preferences={"preferred_colors": ["blue", "black"]}
+            user_preferences={"preferred_colors": ["blue", "black"]},
         )
         assert req.context == "Friday night out"
         assert req.user_preferences["preferred_colors"] == ["blue", "black"]
@@ -246,7 +222,7 @@ class TestAIProviderSchemas:
         resp = EnhanceResponse(
             enhanced_description="A stylish blue outfit for Friday night",
             style_tips=["Add a watch", "Roll sleeves"],
-            confidence=0.9
+            confidence=0.9,
         )
         assert resp.confidence == 0.9
         assert len(resp.style_tips) == 2
@@ -262,7 +238,7 @@ class TestHealthResponse:
             version="0.1.0",
             timestamp=datetime.now(),
             database="connected",
-            ai_provider="local"
+            ai_provider="local",
         )
         assert resp.status == "healthy"
         assert resp.ai_provider == "local"

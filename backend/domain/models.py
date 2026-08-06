@@ -1,5 +1,6 @@
 # backend/domain/models.py
 """Pure domain models — no DB coupling, no SQLModel, just dataclasses."""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -14,6 +15,7 @@ from backend.domain.enums import (
 @dataclass
 class Garment:
     """Pure domain model for a garment."""
+
     name: str
     type: GarmentType
     dominant_color_hex: str
@@ -41,6 +43,7 @@ class Garment:
 @dataclass
 class Outfit:
     """Pure domain model for an outfit."""
+
     name: str
     occasion: str
     season: Season = Season.ALL_SEASON
@@ -57,6 +60,7 @@ class Outfit:
 @dataclass
 class OutfitGarmentLink:
     """Pure domain model for outfit-garment link."""
+
     outfit_id: int
     garment_id: int
     position: int = 0
@@ -66,6 +70,7 @@ class OutfitGarmentLink:
 @dataclass
 class StyleRule:
     """Pure domain model for a style rule."""
+
     name: str
     rule_type: str  # color_harmony, formality_match, pattern_balance, seasonal, occasion_match
     weight: float = 1.0
@@ -80,6 +85,7 @@ class StyleRule:
 @dataclass
 class UserFeedback:
     """Pure domain model for user feedback."""
+
     garment_id: int | None = None
     outfit_id: int | None = None
     rating: int = 0  # -1, 0, 1

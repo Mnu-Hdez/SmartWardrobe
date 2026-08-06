@@ -1,5 +1,6 @@
 # backend/vision/stages/segmenter_stage.py
 """Segmentation stage — wraps SAM segmenter."""
+
 from pathlib import Path
 from typing import Any
 
@@ -36,12 +37,17 @@ class SegmenterStage:
             processed_dir = Path(context["processed_dir"])
             processed_dir.mkdir(parents=True, exist_ok=True)
 
-            masked_image_path = str(processed_dir / f"{context.get('garment_id', 'unknown')}_masked.png")
+            masked_image_path = str(
+                processed_dir / f"{context.get('garment_id', 'unknown')}_masked.png"
+            )
             masked_img.save(masked_image_path)
 
             # Save mask
-            mask_path = str(Path(context["processed_dir"]) / f"{context.get('garment_id', 'unknown')}_mask.png")
+            mask_path = str(
+                Path(context["processed_dir"]) / f"{context.get('garment_id', 'unknown')}_mask.png"
+            )
             from PIL import Image as PILImage
+
             PILImage.fromarray((mask * 255).astype("uint8")).save(mask_path)
 
             context["mask"] = mask

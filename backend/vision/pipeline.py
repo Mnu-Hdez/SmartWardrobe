@@ -1,5 +1,6 @@
 # backend/vision/pipeline.py
 """Vision pipeline orchestrator — composes stages."""
+
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -20,7 +21,9 @@ class VisionPipeline:
 
     stages: list[Any]
 
-    def run(self, image: Image.Image, initial_context: dict[str, Any] | None = None) -> dict[str, Any]:
+    def run(
+        self, image: Image.Image, initial_context: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Run all stages in sequence, passing context through each."""
         context = initial_context or {}
         context["image"] = image

@@ -12,7 +12,7 @@ class TestVisionPipeline:
     def sample_image(self):
         """Create a sample test image."""
         # Create a simple colored image
-        img = Image.new('RGB', (224, 224), color='red')
+        img = Image.new("RGB", (224, 224), color="red")
         return img
 
     @pytest.fixture
@@ -26,8 +26,8 @@ class TestVisionPipeline:
 class TestSAMSegmenter:
     """Test Segment Anything Model segmenter."""
 
-    @patch('backend.vision.segmenter.sam_model_registry')
-    @patch('backend.vision.segmenter.SamPredictor')
+    @patch("backend.vision.segmenter.sam_model_registry")
+    @patch("backend.vision.segmenter.SamPredictor")
     def test_segmenter_initialization(self, mock_predictor, mock_registry, sample_image):
         """Test SAM segmenter initializes correctly."""
         from backend.vision.segmenter import SAMSegmenter
@@ -42,8 +42,8 @@ class TestSAMSegmenter:
         mock_registry.assert_called_once_with("vit_b")
         mock_sam.to.assert_called_once()
 
-    @patch('backend.vision.segmenter.SamPredictor')
-    @patch('backend.vision.segmenter.sam_model_registry')
+    @patch("backend.vision.segmenter.SamPredictor")
+    @patch("backend.vision.segmenter.sam_model_registry")
     def test_segment_auto(self, mock_registry, mock_predictor_class, sample_image):
         """Test automatic segmentation."""
         from backend.vision.segmenter import SAMSegmenter
@@ -58,10 +58,12 @@ class TestSAMSegmenter:
         # Mock mask generation
         mock_generator = Mock()
         mock_generator.generate.return_value = [
-            {'segmentation': np.ones((224, 224), dtype=bool), 'area': 50000, 'stability_score': 0.9}
+            {"segmentation": np.ones((224, 224), dtype=bool), "area": 50000, "stability_score": 0.9}
         ]
 
-        with patch('backend.vision.segmenter.SamAutomaticMaskGenerator', return_value=mock_generator):
+        with patch(
+            "backend.vision.segmenter.SamAutomaticMaskGenerator", return_value=mock_generator
+        ):
             segmenter = SAMSegmenter()
             segmenter.predictor = mock_predictor
             segmenter.model = mock_sam
@@ -72,8 +74,8 @@ class TestSAMSegmenter:
             assert isinstance(masked_img, Image.Image)
             assert 0 <= score <= 1
 
-    @patch('backend.vision.segmenter.SamPredictor')
-    @patch('backend.vision.segmenter.sam_model_registry')
+    @patch("backend.vision.segmenter.SamPredictor")
+    @patch("backend.vision.segmenter.sam_model_registry")
     def test_segment_with_point(self, mock_registry, mock_predictor_class, sample_image):
         """Test segmentation with point prompt."""
         from backend.vision.segmenter import SAMSegmenter
@@ -88,7 +90,7 @@ class TestSAMSegmenter:
         mock_predictor.predict.return_value = (
             np.array([np.ones((224, 224), dtype=bool)]),  # masks
             np.array([0.9]),  # scores
-            np.array([[]])  # logits
+            np.array([[]]),  # logits
         )
 
         segmenter = SAMSegmenter()
@@ -106,8 +108,8 @@ class TestSAMSegmenter:
 class TestCLIPClassifier:
     """Test CLIP-based garment classifier."""
 
-    @patch('backend.vision.classifier.open_clip.create_model_and_transforms')
-    @patch('backend.vision.classifier.open_clip.get_tokenizer')
+    @patch("backend.vision.classifier.open_clip.create_model_and_transforms")
+    @patch("backend.vision.classifier.open_clip.get_tokenizer")
     def test_classifier_initialization(self, mock_tokenizer, mock_create_model):
         """Test CLIP classifier initializes correctly."""
         from backend.vision.classifier import CLIPClassifier
@@ -126,8 +128,8 @@ class TestCLIPClassifier:
         mock_create_model.assert_called_once()
         mock_tokenizer.assert_called_once_with("ViT-B-32")
 
-    @patch('backend.vision.classifier.open_clip.create_model_and_transforms')
-    @patch('backend.vision.classifier.open_clip.get_tokenizer')
+    @patch("backend.vision.classifier.open_clip.create_model_and_transforms")
+    @patch("backend.vision.classifier.open_clip.get_tokenizer")
     def test_classify_garment(self, mock_tokenizer, mock_create_model, sample_image):
         """Test garment classification."""
         from backend.vision.classifier import CLIPClassifier
@@ -150,9 +152,11 @@ class TestCLIPClassifier:
         mock_model.encode_image.return_value = mock_image_embeds
 
         # Mock softmax output for each category
-        with patch('torch.nn.functional.softmax') as mock_softmax:
+        with patch("torch.nn.functional.softmax") as mock_softmax:
             mock_softmax.return_value = Mock(
-                cpu=Mock(return_value=Mock(numpy=Mock(return_value=np.array([0.8, 0.1, 0.05, 0.05]))))
+                cpu=Mock(
+                    return_value=Mock(numpy=Mock(return_value=np.array([0.8, 0.1, 0.05, 0.05])))
+                )
             )
 
             classifier = CLIPClassifier()
@@ -170,11 +174,11 @@ class TestCLIPClassifier:
         """Test getting image embedding."""
         from backend.vision.classifier import CLIPClassifier
 
-        with patch.object(CLIPClassifier, '__init__', lambda self: None):
+        with patch.object(CLIPClassifier, "__init__", lambda self: None):
             classifier = CLIPClassifier()
             classifier.model = Mock()
             classifier.preprocess = Mock(return_value=Mock())
-            classifier.device = 'cpu'
+            classifier.device = "cpu"
 
             mock_embed = Mock()
             mock_embed.norm.return_value = mock_embed
@@ -200,7 +204,7 @@ class TestColorExtractor:
         # Test with simple image
         hex_color, color_name = extractor.extract_dominant_color(sample_image_path)
 
-        assert hex_color.startswith('#')
+        assert hex_color.startswith("#")
         assert len(hex_color) == 7
         assert isinstance(color_name, str)
         assert len(color_name) > 0
@@ -214,7 +218,7 @@ class TestColorExtractor:
 
         assert len(palette) <= 3
         for hex_color, color_name in palette:
-            assert hex_color.startswith('#')
+            assert hex_color.startswith("#")
             assert len(hex_color) == 7
 
     def test_rgb_to_hex(self):
@@ -256,10 +260,17 @@ class TestColorExtractor:
 class TestIngestionPipeline:
     """Test full garment ingestion pipeline."""
 
-    @patch('backend.vision.ingestion_pipeline.SAMSegmenter')
-    @patch('backend.vision.ingestion_pipeline.CLIPClassifier')
-    @patch('backend.vision.ingestion_pipeline.extract_colors_from_image')
-    def test_process_garment(self, mock_extract_colors, mock_classifier_class, mock_segmenter_class, sample_image_path, tmp_path):
+    @patch("backend.vision.ingestion_pipeline.SAMSegmenter")
+    @patch("backend.vision.ingestion_pipeline.CLIPClassifier")
+    @patch("backend.vision.ingestion_pipeline.extract_colors_from_image")
+    def test_process_garment(
+        self,
+        mock_extract_colors,
+        mock_classifier_class,
+        mock_segmenter_class,
+        sample_image_path,
+        tmp_path,
+    ):
         """Test complete garment processing pipeline."""
         from backend.vision.ingestion_pipeline import IngestionPipeline
 
@@ -268,7 +279,7 @@ class TestIngestionPipeline:
         mock_segmenter_class.return_value = mock_segmenter
 
         mock_mask = np.ones((224, 224), dtype=bool)
-        mock_masked_img = Image.new('RGB', (224, 224), 'red')
+        mock_masked_img = Image.new("RGB", (224, 224), "red")
         mock_segmenter.segment_auto.return_value = (mock_mask, mock_masked_img, 0.9)
 
         mock_classifier = Mock()
@@ -284,17 +295,17 @@ class TestIngestionPipeline:
             "formality_confidence": 0.8,
             "season": "all_season",
             "season_confidence": 0.9,
-            "overall_confidence": 0.88
+            "overall_confidence": 0.88,
         }
 
         mock_extract_colors.return_value = {
             "dominant_color_hex": "#FF0000",
             "dominant_color_name": "red",
-            "palette": [{"hex": "#FF0000", "name": "red"}]
+            "palette": [{"hex": "#FF0000", "name": "red"}],
         }
 
         # Mock database
-        with patch('backend.vision.ingestion_pipeline.get_db_session') as mock_db:
+        with patch("backend.vision.ingestion_pipeline.get_db_session") as mock_db:
             mock_session = Mock()
             mock_db.return_value.__enter__ = Mock(return_value=mock_session)
             mock_db.return_value.__exit__ = Mock(return_value=False)
@@ -302,12 +313,12 @@ class TestIngestionPipeline:
             mock_repo = Mock()
             mock_repo.create = Mock(return_value=Mock(id=1))
 
-            with patch('backend.vision.ingestion_pipeline.GarmentRepository', return_value=mock_repo):
+            with patch(
+                "backend.vision.ingestion_pipeline.GarmentRepository", return_value=mock_repo
+            ):
                 pipeline = IngestionPipeline()
                 result = pipeline.process_garment(
-                    sample_image_path,
-                    name="Test Shirt",
-                    brand="Test Brand"
+                    sample_image_path, name="Test Shirt", brand="Test Brand"
                 )
 
                 assert result["garment_id"] == 1
@@ -325,14 +336,14 @@ class TestIngestionPipeline:
         img_dir.mkdir()
 
         for i in range(3):
-            img = Image.new('RGB', (100, 100), color=['red', 'blue', 'green'][i])
+            img = Image.new("RGB", (100, 100), color=["red", "blue", "green"][i])
             img.save(img_dir / f"garment_{i}.jpg")
 
-        with patch.object(IngestionPipeline, 'process_garment') as mock_process:
+        with patch.object(IngestionPipeline, "process_garment") as mock_process:
             mock_process.side_effect = [
                 {"garment_id": 1, "name": "Garment 1"},
                 {"garment_id": 2, "name": "Garment 2"},
-                {"error": "Failed", "file": str(img_dir / "garment_2.jpg")}
+                {"error": "Failed", "file": str(img_dir / "garment_2.jpg")},
             ]
 
             pipeline = IngestionPipeline()
@@ -350,18 +361,19 @@ class TestVisionPipelineIntegration:
     def test_image(self, tmp_path):
         """Create a realistic test garment image."""
         # Create an image with a distinct object on background
-        img = Image.new('RGB', (400, 400), color='white')  # White background
+        img = Image.new("RGB", (400, 400), color="white")  # White background
         # Add a colored rectangle (simulating a garment)
         from PIL import ImageDraw
+
         draw = ImageDraw.Draw(img)
-        draw.rectangle([100, 100, 300, 300], fill='blue')
+        draw.rectangle([100, 100, 300, 300], fill="blue")
         path = tmp_path / "test_garment.jpg"
         img.save(path)
         return str(path)
 
     @pytest.mark.skipif(
         not pytest.importorskip("segment_anything", reason="SAM not available"),
-        reason="Requires segment-anything package"
+        reason="Requires segment-anything package",
     )
     def test_full_pipeline_with_real_models(self, test_image):
         """Test pipeline with real models (requires models downloaded)."""
@@ -375,4 +387,4 @@ class TestVisionPipelineIntegration:
 @pytest.fixture
 def mock_pil_image():
     """Create a mock PIL image for testing."""
-    return Image.new('RGB', (224, 224), color='blue')
+    return Image.new("RGB", (224, 224), color="blue")

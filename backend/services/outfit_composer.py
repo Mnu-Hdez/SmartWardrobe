@@ -166,9 +166,7 @@ class OutfitComposer:
 
             # Add garment links
             for pos, garment in enumerate(candidate.garments):
-                link = OutfitGarmentLink(
-                    outfit_id=outfit.id, garment_id=garment.id, position=pos
-                )
+                link = OutfitGarmentLink(outfit_id=outfit.id, garment_id=garment.id, position=pos)
                 self.session.add(link)
 
             self.session.commit()
@@ -394,5 +392,3 @@ class OutfitComposer:
                 for g in garments
             ],
         }
-
-

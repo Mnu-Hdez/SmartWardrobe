@@ -1,147 +1,95 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Smart Wardrobe - Outfit System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Wardrobe</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div id="app" class="app-shell">
-        <!-- Navigation bar (hidden on kiosk mode) -->
-        <nav class="app-nav hidden-kiosk" id="appNav">
-            <div class="nav-brand">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="12" cy="7" r="4"></circle>
-                </svg>
-                <span>Smart Wardrobe</span>
-            </div>
-            <div class="nav-links">
-                <a href="/kiosk" class="nav-link" data-route="kiosk">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                        <path d="M8 21h8"></path>
-                        <path d="M12 17v4"></path>
-                    </svg>
-                    <span>Kiosco</span>
-                </a>
-                <a href="/settings" class="nav-link" data-route="settings">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                    </svg>
-                    <span>Administración</span>
-                </a>
-            </div>
-        </nav>
+    <main id="mainContent"></main>
 
-        <!-- Main content container -->
-        <main id="mainContent" class="main-content">
-            <!-- Content will be loaded dynamically based on route -->
-        </main>
-    </div>
+    <!-- Toast Container (global) -->
+    <div class="toast-container" id="toastContainer" role="region" aria-label="Notifications" aria-live="polite"></div>
 
-    <!-- Toast container for notifications -->
-    <div class="toast-container" id="toastContainer" aria-live="polite"></div>
-
-    <!-- Load route-specific modules -->
     <script type="module">
-        import { api } from '/static/js/api.js';
-        
-        // Make api globally available
-        window.api = api;
-        
-        // Route definitions with template URLs
+        // SPA Router
         const routes = {
-            '/kiosk':    { template: '/templates/kiosk.html',    load: () => import('/static/js/kiosk.js') },
-            '/settings': { template: '/templates/settings.html', load: () => import('/static/js/settings.js') }
-        };
-        
-        async function loadRoute(path) {
-            const mainContent = document.getElementById('mainContent');
-            const nav = document.getElementById('appNav');
-            
-            // Show/hide nav based on route
-            if (path === '/kiosk') {
-                nav.classList.add('hidden-kiosk');
-                document.body.classList.add('kiosk-mode');
-            } else {
-                nav.classList.remove('hidden-kiosk');
-                document.body.classList.remove('kiosk-mode');
+            '/kiosk': {
+                template: '/templates/kiosk.html',
+                load: () => import('/static/js/kiosk.js')
+            },
+            '/settings': {
+                template: '/templates/settings.html',
+                load: () => import('/static/js/settings.js')
             }
-            
-            // Update active nav link
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.toggle('active', link.dataset.route === path.replace('/', ''));
-            });
-            
-            // Load route module
-            const route = routes[path];
-            if (route) {
-                try {
-                    mainContent.innerHTML = '<div class="route-loading"><div class="spinner"></div><p>Cargando...</p></div>';
-                    
-                    // First, fetch and inject the template HTML
-                    const response = await fetch(route.template);
-                    if (!response.ok) {
-                        throw new Error(`Failed to load template: ${response.status}`);
-                    }
-                    const html = await response.text();
-                    mainContent.innerHTML = html;
-                    
-                    // Then load the controller module and capture exports
-                    console.log('Loading controller module for path:', path);
-                    const module = await route.load();
-                    console.log('Controller module loaded for path:', path, 'exports:', Object.keys(module));
-                    if (path === '/kiosk' && module.initKioskUI) {
-                        console.log('Initializing KioskUI');
-                        module.initKioskUI();
-                    } else if (path === '/settings' && module.initSettingsUI) {
-                        console.log('Initializing SettingsUI');
-                        module.initSettingsUI();
-                    } else {
-                        console.warn('No initializer found for path:', path);
-                    }
-                } catch (error) {
-                    console.error('Error loading route:', error);
-                    mainContent.innerHTML = `
-                        <div class="route-error">
-                            <h2>Error al cargar la página</h2>
-                            <p>${error.message}</p>
-                            <button class="btn btn-primary" onclick="location.reload()">Recargar</button>
-                        </div>
-                    `;
+        };
+
+        let currentRoute = null;
+
+        async function loadRoute(path) {
+            // Normalize path
+            const normalizedPath = path === '/' || path === '' ? '/kiosk' : path;
+            const route = routes[normalizedPath];
+
+            if (!route) {
+                console.warn(`Route not found: ${normalizedPath}, redirecting to /kiosk`);
+                window.location.hash = '/kiosk';
+                return;
+            }
+
+            try {
+                // 1. Fetch template HTML
+                const response = await fetch(route.template);
+                if (!response.ok) throw new Error(`Failed to load template: ${response.status}`);
+                const html = await response.text();
+
+                // 2. Inject into main content
+                const mainContent = document.getElementById('mainContent');
+                mainContent.innerHTML = html;
+
+                // 3. Dynamic import module
+                const module = await route.load();
+
+                // 4. Call exported init function
+                if (normalizedPath === '/kiosk' && module.initKioskUI) {
+                    module.initKioskUI();
+                } else if (normalizedPath === '/settings' && module.initSettingsUI) {
+                    module.initSettingsUI();
                 }
-            } else {
-                // Default to kiosk
-                window.location.href = '/kiosk';
+
+                currentRoute = normalizedPath;
+                document.title = `Smart Wardrobe - ${normalizedPath === '/kiosk' ? 'Kiosk' : 'Settings'}`;
+
+            } catch (error) {
+                console.error('Route loading error:', error);
+                document.getElementById('mainContent').innerHTML = `
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100dvh; padding: 20px; text-align: center; color: var(--text-muted);">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 16px; opacity: 0.5;">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="15" y1="9" x2="9" y2="15"></line>
+                            <line x1="9" y1="9" x2="15" y2="15"></line>
+                        </svg>
+                        <h2 style="margin-bottom: 8px; color: var(--text-secondary);">Failed to load page</h2>
+                        <p>${error.message}</p>
+                        <button class="btn btn-primary" onclick="window.location.reload()" style="margin-top: 16px;">Reload</button>
+                    </div>
+                `;
             }
         }
-        
-        // Handle navigation
-        function navigate(path) {
-            window.history.pushState({}, '', path);
+
+        // Handle hash changes
+        function handleHashChange() {
+            const path = window.location.hash.slice(1) || '/';
             loadRoute(path);
         }
-        
-        // Intercept link clicks
-        document.addEventListener('click', (e) => {
-            const link = e.target.closest('a[data-route]');
-            if (link) {
-                e.preventDefault();
-                navigate('/' + link.dataset.route);
-            }
-        });
-        
-        // Handle browser back/forward
-        window.addEventListener('popstate', () => {
-            loadRoute(window.location.pathname);
-        });
-        
+
         // Initial load
-        const initialPath = window.location.pathname || '/kiosk';
-        loadRoute(initialPath);
+        window.addEventListener('hashchange', handleHashChange);
+        handleHashChange();
+
+        // Expose for debugging
+        window.loadRoute = loadRoute;
     </script>
 </body>
 </html>

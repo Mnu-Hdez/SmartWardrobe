@@ -1,133 +1,161 @@
+# Smart Wardrobe - Database Models
+# SQLModel models with dual image paths
+
 from datetime import datetime
-from typing import Optional
+from enum import Enum
 
-from sqlmodel import Field, Relationship, SQLModel
+from sqlalchemy import DateTime, Integer, String, Text
+from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
-from backend.domain.enums import (
-    FormalityLevel,
-    GarmentType,
-    PatternType,
-    Season,
-)
 
-# All relationships use string references to avoid circular imports
-# Related tables are defined in this same file
+class GarmentType(str, Enum):
+    TOP = "top"
+    BOTTOM = "bottom"
+    DRESS = "dress"
+    OUTERWEAR = "outerwear"
+    SHOES = "shoes"
+    ACCESSORY = "accessory"
+
+
+class Season(str, Enum):
+    SPRING = "spring"
+    SUMMER = "summer"
+    AUTUMN = "autumn"
+    WINTER = "winter"
+    ALL_SEASON = "all_season"
+
+
+class Pattern(str, Enum):
+    SOLID = "solid"
+    STRIPED = "striped"
+    CHECKED = "checked"
+    FLORAL = "floral"
+    POLKA_DOT = "polka_dot"
+    GEOMETRIC = "geometric"
+    ABSTRACT = "abstract"
+    ANIMAL_PRINT = "animal_print"
+    PAISLEY = "paisley"
+    HOUNDSTOOTH = "houndstooth"
 
 
 class Garment(SQLModel, table=True):
-    __tablename__ = "garments"
+    """Garment model with dual image storage (raw + processed mask)"""
+
+    __tablename__ = "garment"  # type: ignore
 
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(max_length=100)
-    type: GarmentType = Field(index=True)
-    dominant_color_hex: str = Field(max_length=7)  # #RRGGBB
-    color_name: str = Field(max_length=50)
-    secondary_color_hex: str | None = Field(default=None, max_length=7)
-    pattern: PatternType = Field(default=PatternType.SOLID)
-    formality: FormalityLevel = Field(default=FormalityLevel.CASUAL)
-    season: Season = Field(default=Season.ALL_SEASON)
-    brand: str | None = Field(default=None, max_length=100)
-    size: str | None = Field(default=None, max_length=20)
-    material: str | None = Field(default=None, max_length=100)
+    name: str = Field(sa_column=Column(String(200), nullable=False))
+    brand: str | None = Field(default=None, sa_column=Column(String(100)))
+    type: str = Field(sa_column=Column(String(50), nullable=False))  # Use GarmentType values
+    season: str = Field(default=Season.ALL_SEASON, sa_column=Column(String(50), nullable=False))
+    size: str | None = Field(default=None, sa_column=Column(String(20)))
+    material: str | None = Field(default=None, sa_column=Column(String(100)))
+    color_name: str = Field(sa_column=Column(String(50), nullable=False))
+    color_hex: str = Field(sa_column=Column(String(7), nullable=False))  # #RRGGBB
+    pattern: str = Field(default=Pattern.SOLID, sa_column=Column(String(50), nullable=False))
+    formality: int = Field(default=1, sa_column=Column(Integer, nullable=False))  # 1-5
 
-    # Image paths - dual storage structure
-    # raw_image_path: Original high-resolution image for display
-    # processed_image_path: Segmented/processed image for AI processing
-    raw_image_path: str = Field(max_length=500)
-    processed_image_path: str = Field(max_length=500)
-    mask_image_path: str | None = Field(default=None, max_length=500)
-
-    # CLIP embeddings (stored as JSON string of float array)
-    clip_embedding: str | None = Field(default=None)  # JSON string of float array
-
-    # AI analysis metadata
-    confidence_scores: str | None = Field(default=None)  # JSON string
-    processed_at: datetime = Field(default_factory=datetime.utcnow)
-
-    # Bias learning from feedback
-    style_bias: float = Field(default=0.0)  # -1 to 1, learned from feedback
-
-    # Frontend fields
-    is_favorite: bool = Field(default=False)
-    wear_count: int = Field(default=0)
+    # Dual image storage paths
+    raw_image_path: str = Field(sa_column=Column(String(500), nullable=False))
+    processed_image_path: str = Field(sa_column=Column(String(500), nullable=False))
 
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=Column(DateTime, nullable=False)
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=Column(DateTime, nullable=False)
+    )
 
     # Relationships
-    outfit_links: list["OutfitGarmentLink"] = Relationship(back_populates="garment")
-    feedbacks: list["UserFeedback"] = Relationship(back_populates="garment")
+    outfit_items: list["OutfitItem"] = Relationship(back_populates="garment")
+
+    def __repr__(self):
+        return f"<Garment(id={self.id}, name='{self.name}', type='{self.type}')>"
 
 
 class Outfit(SQLModel, table=True):
-    __tablename__ = "outfits"
+    """Outfit model"""
+
+    __tablename__ = "outfit"  # type: ignore
 
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(max_length=100)
-    occasion: str = Field(max_length=50, index=True)  # casual, work, party, wedding, etc.
-    season: Season = Field(default=Season.ALL_SEASON, index=True)
-    formality: FormalityLevel = Field(default=FormalityLevel.CASUAL, index=True)
-    score: float = Field(default=0.0)  # 0-100 score from composer
-
-    # Image
-    composed_image_path: str | None = Field(default=None, max_length=500)
-
-    # Metadata
-    is_packing: bool = Field(default=False)
-    packing_days: int | None = Field(default=None)
-
-    # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    name: str | None = Field(default=None, sa_column=Column(String(200)))
+    occasion: str = Field(sa_column=Column(String(50), nullable=False))
+    season: str = Field(sa_column=Column(String(50), nullable=False))
+    score: float | None = Field(default=None, sa_column=Column(Integer))
+    score_breakdown: dict | None = Field(default=None, sa_column=Column(JSON))
+    ai_tips: list[str] | None = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=Column(DateTime, nullable=False)
+    )
 
     # Relationships
-    garment_links: list["OutfitGarmentLink"] = Relationship(back_populates="outfit")
-    feedbacks: list["UserFeedback"] = Relationship(back_populates="outfit")
+    items: list["OutfitItem"] = Relationship(back_populates="outfit")
+
+    def __repr__(self):
+        return f"<Outfit(id={self.id}, occasion='{self.occasion}', score={self.score})>"
 
 
-class OutfitGarmentLink(SQLModel, table=True):
-    __tablename__ = "outfit_garment_links"
+class OutfitItem(SQLModel, table=True):
+    """Outfit-Garment junction with position (layer order)"""
+
+    __tablename__ = "outfit_item"  # type: ignore
 
     id: int | None = Field(default=None, primary_key=True)
-    outfit_id: int = Field(foreign_key="outfits.id", index=True)
-    garment_id: int = Field(foreign_key="garments.id", index=True)
-    position: int = Field(default=0)  # layer order
+    outfit_id: int = Field(foreign_key="outfit.id", nullable=False)
+    garment_id: int = Field(foreign_key="garment.id", nullable=False)
+    position: int = Field(sa_column=Column(Integer, nullable=False))  # Layer order
 
     # Relationships
-    outfit: "Outfit" = Relationship(back_populates="garment_links")
-    garment: "Garment" = Relationship(back_populates="outfit_links")
+    outfit: Outfit | None = Relationship(back_populates="items")
+    garment: Garment | None = Relationship(back_populates="outfit_items")
+
+
+# Backward compatibility alias for tests
+OutfitGarmentLink = OutfitItem
+
+
+class StyleRuleType(str, Enum):
+    COLOR_HARMONY = "color_harmony"
+    OCCASION_MATCH = "occasion_match"
+    SEASON_MATCH = "season_match"
+    FORMALITY_CAP = "formality_cap"
 
 
 class StyleRule(SQLModel, table=True):
-    __tablename__ = "style_rules"
+    """Style rules for outfit recommendations"""
+
+    __tablename__ = "style_rule"  # type: ignore
 
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(max_length=100, unique=True)
-    description: str
-    rule_type: str = Field(
-        max_length=50
-    )  # color_harmony, formality_match, pattern_balance, seasonal
-    weight: float = Field(default=1.0)  # weight in scoring
-    is_active: bool = Field(default=True)
-    parameters: str = Field(default="{}")  # JSON string of rule parameters
+    name: str = Field(sa_column=Column(String(200), nullable=False))
+    rule_type: str = Field(sa_column=Column(String(50), nullable=False))
+    parameters: str = Field(sa_column=Column(Text, nullable=False))  # JSON string
+    weight: float = Field(default=1.0, sa_column=Column(Integer, nullable=False))
+    is_active: bool = Field(default=True, sa_column=Column(Integer, nullable=False))
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=Column(DateTime, nullable=False)
+    )
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    def __repr__(self):
+        return f"<StyleRule(id={self.id}, name='{self.name}', type='{self.rule_type}')>"
 
 
 class UserFeedback(SQLModel, table=True):
-    __tablename__ = "user_feedbacks"
+    """User feedback on outfits and garments"""
+
+    __tablename__ = "user_feedback"  # type: ignore
 
     id: int | None = Field(default=None, primary_key=True)
-    garment_id: int | None = Field(default=None, foreign_key="garments.id", index=True)
-    outfit_id: int | None = Field(default=None, foreign_key="outfits.id", index=True)
-    rating: int = Field(ge=-1, le=1)  # -1 (dislike), 0 (neutral), 1 (like)
-    feedback_type: str = Field(max_length=20)  # "garment", "outfit", "outfit_garment"
-    context: str | None = Field(default=None, max_length=500)  # occasion, context notes
+    garment_id: int | None = Field(default=None, foreign_key="garment.id")
+    outfit_id: int | None = Field(default=None, foreign_key="outfit.id")
+    rating: int = Field(sa_column=Column(Integer, nullable=False))  # -1, 0, 1
+    feedback_type: str = Field(sa_column=Column(String(50), nullable=False))  # "outfit", "garment"
+    context: str | None = Field(default=None, sa_column=Column(String(500)))
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=Column(DateTime, nullable=False)
+    )
 
-    # Relationships
-    garment: Optional["Garment"] = Relationship(back_populates="feedbacks")
-    outfit: Optional["Outfit"] = Relationship(back_populates="feedbacks")
-
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    def __repr__(self):
+        return f"<UserFeedback(id={self.id}, rating={self.rating}, type='{self.feedback_type}')>"

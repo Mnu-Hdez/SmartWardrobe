@@ -1,446 +1,410 @@
+# Smart Wardrobe - API Router
+# Wardrobe CRUD endpoints
+
+import os
 import shutil
 import uuid
-from datetime import datetime
-from pathlib import Path
 
-import numpy as np
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from PIL import Image
-from sqlmodel import Session
-
-from backend.ai_providers.factory import AIProviderFactory
-from backend.core.config import get_settings
 from backend.database.connection import get_session
+from backend.core.config import settings
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
-    EnhanceRequest,
-    EnhanceResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     GarmentCreate,
-    GarmentRead,
+    GarmentListResponse,
+    GarmentResponse,
     GarmentUpdate,
     HealthResponse,
     OutfitCreate,
-    OutfitRead,
+    OutfitListResponse,
     OutfitRecommendationRequest,
     OutfitRecommendationResponse,
+    OutfitResponse,
     OutfitUpdate,
-    PackingRequest,
-    PackingResponse,
+    PackingPlanRequest,
+    PackingPlanResponse,
     StyleRuleCreate,
-    StyleRuleRead,
+    StyleRuleListResponse,
+    StyleRuleResponse,
     StyleRuleUpdate,
-    UserFeedbackCreate,
-    UserFeedbackRead,
 )
-from backend.repositories import (
+from backend.repositories.garment_repo import (
     GarmentRepository,
+    OutfitItemRepository,
     OutfitRepository,
     StyleRuleRepository,
 )
-from backend.services import FeedbackService, OutfitComposer, PackingService
-from backend.vision.classifier import CLIPClassifier
-from backend.vision.color_extractor import extract_colors_from_image
-from backend.vision.segmenter import SAMSegmenter
+from backend.services.outfit_service import OutfitService
+from sqlmodel import Session
 
-router = APIRouter(prefix="/api/v1", tags=["wardrobe"])
+router = APIRouter(prefix="/garments", tags=["Garments"])
 
 
-# Health check
-@router.get("/health", response_model=HealthResponse)
-async def health_check():
-    settings = get_settings()
-    return HealthResponse(
-        status="healthy",
-        version=settings.app_version,
-        timestamp=datetime.utcnow(),
-        database="connected",
-        ai_provider=settings.ai_provider,
+# ========== GARMENT ENDPOINTS ==========
+
+
+@router.get("", response_model=GarmentListResponse)
+async def list_garments(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(24, ge=1, le=100),
+    search: str | None = None,
+    type: str | None = None,
+    season: str | None = None,
+    session: Session = Depends(get_session),
+):
+    """List garments with pagination and filters"""
+    repo = GarmentRepository(session)
+    offset = (page - 1) * page_size
+
+    filters = {}
+    if search:
+        filters["search"] = search
+    if type:
+        filters["type"] = type
+    if season:
+        filters["season"] = season
+
+    garments = repo.get_all(limit=page_size, offset=offset, filters=filters)
+    total = repo.count(filters=filters)
+
+    return GarmentListResponse(
+        garments=[GarmentResponse.model_validate(g) for g in garments],
+        total=total,
+        page=page,
+        page_size=page_size,
     )
 
 
-# Garment endpoints
-@router.post("/garments", response_model=GarmentRead, status_code=201)
+@router.post("", response_model=GarmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_garment(
     name: str = Form(...),
-    type: str = Form(...),
-    color_name: str = Form(...),
-    dominant_color_hex: str = Form(...),
-    pattern: str = Form("solid"),
-    formality: int = Form(1),
-    season: str = Form("all_season"),
     brand: str | None = Form(None),
+    type: str = Form(...),
+    season: str = Form(...),
     size: str | None = Form(None),
     material: str | None = Form(None),
-    price: float | None = Form(None),
-    image: UploadFile = File(...),
+    color_name: str = Form(...),
+    color_hex: str = Form(...),
+    pattern: str = Form(...),
+    formality: int = Form(...),
+    garmentImage: UploadFile = File(...),
     session: Session = Depends(get_session),
 ):
-    """Create a new garment with image upload and AI analysis using dual storage."""
-    repo = GarmentRepository(session)
-    settings = get_settings()
+    """Create a new garment with image upload"""
+    # Validate image
+    if not garmentImage.content_type or not garmentImage.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
 
-    # Save RAW image (original for high-quality display)
-    raw_dir = Path(settings.images_raw_dir)
-    raw_dir.mkdir(parents=True, exist_ok=True)
-
-    ext = Path(image.filename).suffix.lower()
+    # Generate unique filenames
+    ext = os.path.splitext(garmentImage.filename)[1].lower()
     if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
         ext = ".jpg"
 
-    filename = f"{uuid.uuid4()}{ext}"
-    raw_path = raw_dir / filename
+    raw_filename = f"{uuid.uuid4()}{ext}"
+    raw_path = settings.IMAGES_RAW_DIR / raw_filename
 
+    # Save raw image
     with open(raw_path, "wb") as f:
-        shutil.copyfileobj(image.file, f)
+        shutil.copyfileobj(garmentImage.file, f)
 
-    # Process with vision pipeline
-    # 1. Segment garment
-    segmenter = SAMSegmenter()
-    mask, masked_img, seg_conf = segmenter.segment(Image.open(raw_path))
-
-    # Save processed image to PROCESSED storage as PNG (supports transparency)
-    processed_dir = Path(settings.images_processed_garments_dir)
-    processed_dir.mkdir(parents=True, exist_ok=True)
+    # TODO: Process with SAM to create mask (processed image)
+    # For now, copy raw as processed
     processed_filename = f"{uuid.uuid4()}.png"
-    processed_path = processed_dir / processed_filename
-    masked_img.save(processed_path)
+    processed_path = settings.IMAGES_PROCESSED_GARMENTS_DIR / processed_filename
+    shutil.copy2(raw_path, processed_path)
 
-    # Save mask
-    mask_filename = f"{uuid.uuid4()}_mask.png"
-    mask_path = processed_dir / mask_filename
-    Image.fromarray((mask * 255).astype(np.uint8)).save(mask_path)
-
-    # 2. Classify garment
-    classifier = CLIPClassifier()
-    classification = classifier.classify(Image.open(raw_path))
-
-    # 3. Extract colors
-    color_info = extract_colors_from_image(str(processed_path), str(mask_path))
-
-    # Map string formality to IntEnum
-    from backend.models.schemas import FormalityLevel
-    formality_map = {
-        "very casual": FormalityLevel.CASUAL,
-        "casual": FormalityLevel.CASUAL,
-        "smart casual": FormalityLevel.SMART_CASUAL,
-        "business casual": FormalityLevel.BUSINESS_CASUAL,
-        "formal": FormalityLevel.FORMAL,
-        "very formal": FormalityLevel.BLACK_TIE,
-    }
-    formality_level = formality_map.get(classification["formality"].lower(), FormalityLevel.CASUAL)
-
-    # Map season string to Season enum
-    from backend.models.schemas import Season
-    season_map = {
-        "spring": Season.SPRING,
-        "summer": Season.SUMMER,
-        "autumn": Season.AUTUMN,
-        "fall": Season.AUTUMN,
-        "winter": Season.WINTER,
-        "all season": Season.ALL_SEASON,
-    }
-    season_enum = season_map.get(classification["season"].lower(), Season.ALL_SEASON)
-
-    # Create garment record with DUAL image paths
+    # Create garment record
     garment_data = GarmentCreate(
         name=name,
-        type=classification["type"] if classification["type_confidence"] > 0.5 else type,
-        color_name=color_info["dominant_color_name"],
-        dominant_color_hex=color_info["dominant_color_hex"],
-        pattern=classification["pattern"],
-        formality=formality_level,
-        season=season_enum,
         brand=brand,
+        type=type,
+        season=season,
         size=size,
         material=material,
-        price=price,
-        raw_image_path=str(raw_path),  # RAW: original for display
-        processed_image_path=str(processed_path),  # PROCESSED: segmented for AI
-        segmentation_mask_path=str(mask_path),
+        color_name=color_name,
+        color_hex=color_hex,
+        pattern=pattern,
+        formality=formality,
     )
 
-    garment = repo.create(garment_data)
-    return garment
+    garment = Garment(
+        **garment_data.model_dump(),
+        raw_image_path=raw_filename,
+        processed_image_path=processed_filename,
+    )
 
-
-@router.get("/garments", response_model=list[GarmentRead])
-async def list_garments(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    type: str | None = Query(None),
-    season: str | None = Query(None),
-    session: Session = Depends(get_session),
-):
-    """List all garments with optional filters."""
     repo = GarmentRepository(session)
+    created = repo.create(garment)
 
-    if type:
-        return repo.get_by_type(type, skip, limit)
-    elif season:
-        return repo.get_by_season(season, skip, limit)
-    else:
-        return repo.get_all(skip, limit)
+    return GarmentResponse.model_validate(created)
 
 
-@router.get("/garments/{garment_id}", response_model=GarmentRead)
+@router.get("/{garment_id}", response_model=GarmentResponse)
 async def get_garment(garment_id: int, session: Session = Depends(get_session)):
-    """Get a specific garment by ID."""
+    """Get a single garment by ID"""
     repo = GarmentRepository(session)
     garment = repo.get_by_id(garment_id)
     if not garment:
         raise HTTPException(status_code=404, detail="Garment not found")
-    return garment
+    return GarmentResponse.model_validate(garment)
 
 
-@router.patch("/garments/{garment_id}", response_model=GarmentRead)
+@router.patch("/{garment_id}", response_model=GarmentResponse)
 async def update_garment(
-    garment_id: int, update: GarmentUpdate, session: Session = Depends(get_session)
+    garment_id: int, garment_update: GarmentUpdate, session: Session = Depends(get_session)
 ):
-    """Update garment metadata."""
+    """Update garment metadata (not image)"""
     repo = GarmentRepository(session)
-    garment = repo.update(garment_id, update)
+    garment = repo.update(garment_id, garment_update)
     if not garment:
         raise HTTPException(status_code=404, detail="Garment not found")
-    return garment
+    return GarmentResponse.model_validate(garment)
 
 
-@router.delete("/garments/bulk", status_code=204)
-async def delete_garments_bulk(garment_ids: list[int], session: Session = Depends(get_session)):
-    """Delete multiple garments in a single transaction."""
-    repo = GarmentRepository(session)
-    deleted_count = 0
-    for garment_id in garment_ids:
-        if repo.delete(garment_id):
-            deleted_count += 1
-
-    if deleted_count == 0:
-        raise HTTPException(status_code=404, detail="No garments found to delete")
-
-    return {"deleted": deleted_count}
-
-
-@router.delete("/garments/{garment_id}", status_code=204)
+@router.delete("/{garment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_garment(garment_id: int, session: Session = Depends(get_session)):
-    """Delete a garment."""
+    """Delete a garment"""
     repo = GarmentRepository(session)
-    if not repo.delete(garment_id):
+    success = repo.delete(garment_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Garment not found")
 
 
-# Outfit endpoints
-@router.post("/outfits", response_model=OutfitRead, status_code=201)
-async def create_outfit(outfit: OutfitCreate, session: Session = Depends(get_session)):
-    """Create a new outfit from garment IDs."""
-    repo = OutfitRepository(session)
-    created = repo.create(outfit)
-    return created
+@router.post("/bulk-delete", status_code=status.HTTP_204_NO_CONTENT)
+async def bulk_delete_garments(ids: list[int], session: Session = Depends(get_session)):
+    """Bulk delete garments by IDs"""
+    repo = GarmentRepository(session)
+    deleted = repo.bulk_delete(ids)
+    return {"deleted": deleted}
 
 
-@router.get("/outfits", response_model=list[OutfitRead])
+# ========== OUTFIT ENDPOINTS ==========
+
+outfit_router = APIRouter(prefix="/outfits", tags=["Outfits"])
+
+
+@outfit_router.get("", response_model=OutfitListResponse)
 async def list_outfits(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    occasion: str | None = Query(None),
-    season: str | None = Query(None),
-    is_packing: bool | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(24, ge=1, le=100),
     session: Session = Depends(get_session),
 ):
-    """List outfits with optional filters."""
+    """List outfits with pagination"""
     repo = OutfitRepository(session)
-
-    if occasion:
-        outfits = repo.get_by_occasion(occasion, skip, limit)
-    elif season:
-        outfits = repo.get_by_season(season, skip, limit)
-    elif is_packing:
-        outfits = repo.get_packing_outfits()
-    else:
-        outfits = repo.get_all(skip, limit)
-
-    return outfits
+    offset = (page - 1) * page_size
+    outfits = repo.get_all(limit=page_size, offset=offset)
+    total = repo.count()
+    return OutfitListResponse(
+        outfits=[OutfitResponse.model_validate(o) for o in outfits],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
-@router.get("/outfits/{outfit_id}", response_model=OutfitRead)
+@outfit_router.post("", response_model=OutfitResponse, status_code=status.HTTP_201_CREATED)
+async def create_outfit(outfit_data: OutfitCreate, session: Session = Depends(get_session)):
+    """Create a new outfit from garment IDs"""
+    garment_repo = GarmentRepository(session)
+    outfit_repo = OutfitRepository(session)
+    item_repo = OutfitItemRepository(session)
+
+    # Verify all garments exist
+    for gid in outfit_data.garment_ids:
+        if not garment_repo.get_by_id(gid):
+            raise HTTPException(status_code=404, detail=f"Garment {gid} not found")
+
+    # Create outfit
+    outfit = Outfit(
+        name=outfit_data.name,
+        occasion=outfit_data.occasion,
+        season=outfit_data.season,
+        score=outfit_data.score,
+        score_breakdown=outfit_data.score_breakdown,
+        ai_tips=outfit_data.ai_tips,
+    )
+    saved = outfit_repo.create(outfit)
+
+    # Create outfit items
+    items = [
+        OutfitItem(outfit_id=saved.id, garment_id=gid, position=i)
+        for i, gid in enumerate(outfit_data.garment_ids)
+    ]
+    item_repo.bulk_create(items)
+
+    # Reload with items
+    saved.items = item_repo.get_by_outfit(saved.id)
+    return OutfitResponse.model_validate(saved)
+
+
+@outfit_router.get("/{outfit_id}", response_model=OutfitResponse)
 async def get_outfit(outfit_id: int, session: Session = Depends(get_session)):
-    """Get outfit with garment details."""
+    """Get a single outfit by ID"""
     repo = OutfitRepository(session)
-    outfit = repo.get_with_garments(outfit_id)
+    item_repo = OutfitItemRepository(session)
+    outfit = repo.get_by_id(outfit_id)
     if not outfit:
         raise HTTPException(status_code=404, detail="Outfit not found")
-    return outfit
+    outfit.items = item_repo.get_by_outfit(outfit_id)
+    return OutfitResponse.model_validate(outfit)
 
 
-@router.patch("/outfits/{outfit_id}", response_model=OutfitRead)
+@outfit_router.patch("/{outfit_id}", response_model=OutfitResponse)
 async def update_outfit(
-    outfit_id: int, update: OutfitUpdate, session: Session = Depends(get_session)
+    outfit_id: int, outfit_update: OutfitUpdate, session: Session = Depends(get_session)
 ):
-    """Update an outfit."""
+    """Update outfit"""
     repo = OutfitRepository(session)
-    outfit = repo.update(outfit_id, update)
+    outfit = repo.update(outfit_id, outfit_update)
     if not outfit:
         raise HTTPException(status_code=404, detail="Outfit not found")
-    return outfit
+    return OutfitResponse.model_validate(outfit)
 
 
-@router.delete("/outfits/{outfit_id}", status_code=204)
+@outfit_router.delete("/{outfit_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_outfit(outfit_id: int, session: Session = Depends(get_session)):
-    """Delete an outfit."""
+    """Delete an outfit"""
     repo = OutfitRepository(session)
-    if not repo.delete(outfit_id):
+    item_repo = OutfitItemRepository(session)
+
+    item_repo.delete_by_outfit(outfit_id)
+    success = repo.delete(outfit_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Outfit not found")
 
 
-# Recommendation endpoint
-@router.post("/recommend", response_model=OutfitRecommendationResponse)
+# ========== RECOMMENDATION ENDPOINTS ==========
+
+recommend_router = APIRouter(prefix="/recommend", tags=["Recommendations"])
+
+
+@recommend_router.post("/outfits", response_model=OutfitRecommendationResponse)
 async def recommend_outfits(
     request: OutfitRecommendationRequest, session: Session = Depends(get_session)
 ):
-    """Get top-N outfit recommendations for an occasion."""
-    composer = OutfitComposer(session)
-
-    results = composer.recommend(
-        occasion=request.occasion,
-        season=request.season,
-        formality=request.formality,
-        garment_ids=request.garment_ids,
-        exclude_garment_ids=request.exclude_garment_ids,
-        top_n=request.top_n,
-    )
-
-    outfits = []
-    for outfit, score in results:
-        # Get full outfit with garments
-        full_outfit = composer.get_outfit_with_details(outfit.id)
-        if full_outfit:
-            outfits.append(full_outfit)
-
-    return OutfitRecommendationResponse(outfits=outfits, total_found=len(results))
+    """Generate outfit recommendations"""
+    service = OutfitService(session)
+    result = service.recommend_outfits(request)
+    return OutfitRecommendationResponse(**result)
 
 
-# AI Enhancement endpoint
-@router.post("/enhance", response_model=EnhanceResponse)
-async def enhance_recommendation(request: EnhanceRequest, session: Session = Depends(get_session)):
-    """Enhance an outfit recommendation with AI styling advice."""
-    provider = await AIProviderFactory.get_available_provider()
-    result = await provider.enhance_recommendation(
-        outfit=request.outfit, context=request.context, user_preferences=request.user_preferences
-    )
-    return result
+@recommend_router.post("/packing", response_model=PackingPlanResponse)
+async def create_packing_plan(request: PackingPlanRequest, session: Session = Depends(get_session)):
+    """Create a packing plan for a trip"""
+    service = OutfitService(session)
+    result = service.create_packing_plan(request)
+    return PackingPlanResponse(**result)
 
 
-# Feedback endpoints
-@router.post("/feedback/outfit", response_model=UserFeedbackRead)
-async def rate_outfit(feedback: UserFeedbackCreate, session: Session = Depends(get_session)):
-    """Rate an outfit (like/dislike)."""
-    if not feedback.outfit_id:
-        raise HTTPException(status_code=400, detail="outfit_id required")
+# ========== FEEDBACK ENDPOINTS ==========
 
-    service = FeedbackService(session)
-    result = service.rate_outfit(
-        outfit_id=feedback.outfit_id,
-        rating=feedback.rating,
-        comment=feedback.comment,
-        context=feedback.context,
-    )
-    return result
+feedback_router = APIRouter(prefix="/feedback", tags=["Feedback"])
 
 
-@router.post("/feedback/garment", response_model=UserFeedbackRead)
-async def rate_garment(feedback: UserFeedbackCreate, session: Session = Depends(get_session)):
-    """Rate a garment (like/dislike)."""
-    if not feedback.garment_id:
-        raise HTTPException(status_code=400, detail="garment_id required")
-
-    service = FeedbackService(session)
-    result = service.rate_garment(
-        garment_id=feedback.garment_id,
-        rating=feedback.rating,
-        comment=feedback.comment,
-        context=feedback.context,
-    )
-    return result
+@feedback_router.post("/outfit", response_model=FeedbackResponse)
+async def rate_outfit(request: FeedbackRequest, session: Session = Depends(get_session)):
+    """Rate an outfit"""
+    service = OutfitService(session)
+    success = service.rate_outfit(request.outfit_id, request.rating, request.feedback_type)
+    return FeedbackResponse(success=success, message="Feedback recorded")
 
 
-@router.get("/feedback/outfit/{outfit_id}", response_model=list[UserFeedbackRead])
-async def get_outfit_feedback(outfit_id: int, session: Session = Depends(get_session)):
-    """Get all feedback for an outfit."""
-    service = FeedbackService(session)
-    return service.get_outfit_feedback(outfit_id)
+@feedback_router.post("/garment", response_model=FeedbackResponse)
+async def rate_garment(request: FeedbackRequest, session: Session = Depends(get_session)):
+    """Rate a garment"""
+    service = OutfitService(session)
+    success = service.rate_garment(request.garment_id, request.rating, request.feedback_type)
+    return FeedbackResponse(success=success, message="Feedback recorded")
 
 
-@router.get("/feedback/garment/{garment_id}", response_model=list[UserFeedbackRead])
-async def get_garment_feedback(garment_id: int, session: Session = Depends(get_session)):
-    """Get all feedback for a garment."""
-    service = FeedbackService(session)
-    return service.get_garment_feedback(garment_id)
+# ========== STYLE RULE ENDPOINTS ==========
+
+rules_router = APIRouter(prefix="/rules", tags=["Style Rules"])
 
 
-# Packing endpoint
-@router.post("/packing", response_model=PackingResponse)
-async def create_packing_plan(request: PackingRequest, session: Session = Depends(get_session)):
-    """Generate optimized packing list for N days."""
-    service = PackingService(session)
-
-    try:
-        result = service.plan_packing(
-            days=request.days,
-            occasion=request.occasion,
-            season=request.season,
-            max_items=request.max_items,
-            garment_ids=request.garment_ids,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    return PackingResponse(
-        outfits=result.outfits,
-        garment_count=result.total_items,
-        days_covered=result.days_covered,
-        mix_and_match_ratio=result.mix_and_match_ratio,
-        message=f"Packed {result.total_items} items for {result.days_covered} days",
-    )
-
-
-# Style Rules endpoints
-@router.post("/rules", response_model=StyleRuleRead, status_code=201)
-async def create_rule(rule: StyleRuleCreate, session: Session = Depends(get_session)):
-    """Create a new style rule."""
-    repo = StyleRuleRepository(session)
-    created = repo.create(rule)
-    return created
-
-
-@router.get("/rules", response_model=list[StyleRuleRead])
+@rules_router.get("", response_model=StyleRuleListResponse)
 async def list_rules(active_only: bool = Query(True), session: Session = Depends(get_session)):
-    """List style rules."""
+    """List style rules"""
     repo = StyleRuleRepository(session)
-    return repo.get_all(active_only=active_only)
+    rules = repo.get_all(active_only=active_only)
+    total = repo.count(active_only=active_only)
+    return StyleRuleListResponse(
+        rules=[StyleRuleResponse.model_validate(r) for r in rules], total=total
+    )
 
 
-@router.get("/rules/{rule_id}", response_model=StyleRuleRead)
+@rules_router.post("", response_model=StyleRuleResponse, status_code=status.HTTP_201_CREATED)
+async def create_rule(rule_data: StyleRuleCreate, session: Session = Depends(get_session)):
+    """Create a style rule"""
+    import json
+
+    repo = StyleRuleRepository(session)
+    rule = StyleRule(
+        name=rule_data.name,
+        rule_type=rule_data.rule_type,
+        parameters=json.dumps(rule_data.parameters),
+        weight=rule_data.weight,
+        is_active=rule_data.is_active,
+    )
+    created = repo.create(rule)
+    return StyleRuleResponse.model_validate(created)
+
+
+@rules_router.get("/{rule_id}", response_model=StyleRuleResponse)
 async def get_rule(rule_id: int, session: Session = Depends(get_session)):
-    """Get a style rule."""
+    """Get a style rule by ID"""
     repo = StyleRuleRepository(session)
     rule = repo.get_by_id(rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
-    return rule
+    return StyleRuleResponse.model_validate(rule)
 
 
-@router.patch("/rules/{rule_id}", response_model=StyleRuleRead)
+@rules_router.patch("/{rule_id}", response_model=StyleRuleResponse)
 async def update_rule(
-    rule_id: int, update: StyleRuleUpdate, session: Session = Depends(get_session)
+    rule_id: int, rule_update: StyleRuleUpdate, session: Session = Depends(get_session)
 ):
-    """Update a style rule."""
+    """Update a style rule"""
+    import json
+
     repo = StyleRuleRepository(session)
-    rule = repo.update(rule_id, update)
+
+    update_data = rule_update.model_dump(exclude_unset=True)
+    if "parameters" in update_data:
+        update_data["parameters"] = json.dumps(update_data["parameters"])
+
+    # Convert to StyleRuleUpdate for repo
+    rule = repo.update(rule_id, StyleRuleUpdate(**update_data))
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
-    return rule
+    return StyleRuleResponse.model_validate(rule)
 
 
-@router.delete("/rules/{rule_id}", status_code=204)
+@rules_router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_rule(rule_id: int, session: Session = Depends(get_session)):
-    """Delete a style rule."""
+    """Delete a style rule"""
     repo = StyleRuleRepository(session)
-    if not repo.delete(rule_id):
+    success = repo.delete(rule_id)
+    if not success:
         raise HTTPException(status_code=404, detail="Rule not found")
+
+
+# ========== HEALTH ENDPOINT ==========
+
+health_router = APIRouter(prefix="", tags=["Health"])
+
+
+@health_router.get("/health", response_model=HealthResponse)
+async def health_check(session: Session = Depends(get_session)):
+    """Health check endpoint"""
+    from sqlmodel import select
+
+    try:
+        session.exec(select(1))
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+
+    return HealthResponse(status="ok", database=db_status, ai_provider=settings.AI_PROVIDER)

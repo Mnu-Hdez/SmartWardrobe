@@ -5,6 +5,7 @@ Uses Protocol for structural subtyping (duck typing) instead of ABC inheritance.
 This allows any class with the right methods to be used as an AI provider
 without inheritance — the "lazy" Ponytail way.
 """
+
 from typing import Any, Protocol
 
 from backend.models.schemas import GarmentRead, OutfitRead

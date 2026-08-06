@@ -1,5 +1,6 @@
 # backend/vision/stages/classifier_stage.py
 """Classification stage — wraps CLIP classifier."""
+
 from typing import Any
 
 from PIL import Image

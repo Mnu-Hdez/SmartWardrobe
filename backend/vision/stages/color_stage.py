@@ -1,5 +1,6 @@
 # backend/vision/stages/color_stage.py
 """Color extraction stage — wraps color extractor."""
+
 from typing import Any
 
 from PIL import Image

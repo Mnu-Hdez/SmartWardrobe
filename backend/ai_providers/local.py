@@ -1,130 +1,242 @@
+# Smart Wardrobe - AI Providers
+# Local rules-based provider
+
 from typing import Any
 
-from backend.ai_providers import AIProviderProtocol
-from backend.models.schemas import GarmentRead, OutfitRead
+from backend.models.garment import Garment, Outfit
+from backend.models.schemas import OutfitRecommendationRequest, PackingPlanRequest
 
 
 class LocalRulesProvider:
-    """Local rules-based AI provider - no external API calls."""
-    
-    def __init__(self, config: dict[str, Any] | None = None):
-        self.config = config or {}
+    """Local rules-based AI provider for outfit recommendations"""
+
+    def __init__(self):
         self.name = "local"
-    
-    def get_provider_name(self) -> str:
-        return self.name
-    
-    async def health_check(self) -> bool:
-        return True
-    
-    async def enhance_recommendation(
-        self,
-        outfit: OutfitRead,
-        context: str = "",
-        user_preferences: dict[str, Any] | None = None,
+
+    def recommend_outfits(
+        self, request: OutfitRecommendationRequest, garments: list[Garment]
+    ) -> list[Outfit]:
+        """Generate outfit recommendations using local rules"""
+        # Filter by occasion suitability
+        filtered = self._filter_by_occasion(garments, request.occasion, request.formality or 0)
+
+        if len(filtered) < 2:
+            return []
+
+        # Generate combinations
+        outfits = self._generate_combinations(
+            filtered, request.occasion, request.season, request.top_n
+        )
+
+        # Score and sort
+        for outfit in outfits:
+            outfit.score = self._score_outfit(outfit, request.occasion)
+            outfit.score_breakdown = self._get_score_breakdown(outfit)
+            outfit.ai_tips = self._generate_tips(outfit)
+
+        outfits.sort(key=lambda o: o.score or 0, reverse=True)
+        return outfits[: request.top_n]
+
+    def create_packing_plan(
+        self, request: PackingPlanRequest, garments: list[Garment]
     ) -> dict[str, Any]:
-        """Enhance recommendation using local style rules."""
-        garments = outfit.garments if hasattr(outfit, "garments") and outfit.garments else []
-        
-        # Generate description based on garment properties
-        description_parts = []
-        
-        if garments:
-            # Describe the outfit composition
-            top_items = [g for g in garments if g.type in ["top", "dress", "outerwear"]]
-            bottom_items = [g for g in garments if g.type in ["bottom", "shoes"]]
-            accessories = [g for g in garments if g.type == "accessory"]
-            
-            if len(garments) == 1:
-                item = garments[0]
-                description_parts.append(
-                    f"A {item.color_name} {item.type} perfect for {outfit.occasion}."
-                )
-            elif top_items and bottom_items:
-                top = top_items[0]
-                bottom = bottom_items[0]
-                description_parts.append(
-                    f"Pair the {top.color_name} {top.type} with {bottom.color_name} {bottom.type} "
-                    f"for a {self._get_style_description(outfit.formality)} look."
-                )
-            
-            if accessories:
-                acc = accessories[0]
-                description_parts.append(f"Complete with a {acc.color_name} {acc.type}.")
-        
-        # Add context-aware advice
-        if context:
-            description_parts.append(f"Perfect for {context}.")
-        
-        # Generate style tips based on rules
-        style_tips = self._generate_style_tips(garments, outfit)
-        
+        """Create packing plan using local rules"""
+        # Filter by season
+        filtered = [g for g in garments if g.season == request.season or g.season == "all_season"]
+
+        if not filtered:
+            return {
+                "outfits": [],
+                "packing_list": [],
+                "total_items": 0,
+                "days_covered": 0,
+                "mix_and_match_ratio": 0,
+            }
+
+        # Score by versatility
+        scored = [(g, self._versatility_score(g)) for g in filtered]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        selected = [g for g, _ in scored[: request.max_items]]
+
+        # Generate daily outfits
+        outfits = []
+        for day in range(request.days):
+            day_garments = self._select_daily_outfit(selected, request.occasion)
+            outfit = Outfit(
+                name=f"Day {day + 1}",
+                occasion=request.occasion,
+                season=request.season,
+                score=self._score_outfit_from_garments(day_garments, request.occasion),
+            )
+            outfit.garments = day_garments  # type: ignore
+            outfits.append(outfit)
+
+        packing_list = [
+            {"garment": g, "versatility_score": v, "days_covered": 1}
+            for g, v in scored[: request.max_items]
+        ]
+
         return {
-            "enhanced_description": " ".join(description_parts)
-            if description_parts
-            else f"A stylish {outfit.occasion} outfit.",
-            "style_tips": style_tips,
-            "confidence": 0.85,
+            "outfits": outfits,
+            "packing_list": packing_list,
+            "total_items": len(selected),
+            "days_covered": request.days,
+            "mix_and_match_ratio": len(outfits) / max(1, len(selected)),
         }
-    
-    async def generate_outfit_description(
-        self, garments: list[GarmentRead], occasion: str, context: str = ""
-    ) -> str:
-        """Generate description for a set of garments."""
+
+    def _filter_by_occasion(
+        self, garments: list[Garment], occasion: str, formality: int = None
+    ) -> list[Garment]:
+        occasion_formality = {
+            "casual": (1, 2),
+            "work": (2, 3),
+            "party": (3, 4),
+            "date": (2, 4),
+            "formal": (4, 5),
+            "wedding": (4, 5),
+            "travel": (1, 3),
+        }
+
+        min_form, max_form = occasion_formality.get(occasion, (1, 5))
+        if formality is not None:
+            min_form = max(min_form, formality)
+            max_form = min(max_form, formality)
+
+        return [g for g in garments if min_form <= g.formality <= max_form]
+
+    def _generate_combinations(
+        self, garments: list[Garment], occasion: str, season: str, top_n: int
+    ) -> list[Outfit]:
+        import random
+
+        by_type = {}
+        for g in garments:
+            by_type.setdefault(g.type, []).append(g)
+
+        outfits = []
+        attempts = 0
+        max_attempts = top_n * 10
+
+        while len(outfits) < top_n and attempts < max_attempts:
+            attempts += 1
+            outfit_garments = []
+
+            if "top" in by_type and by_type["top"]:
+                outfit_garments.append(random.choice(by_type["top"]))
+            elif "dress" in by_type and by_type["dress"]:
+                outfit_garments.append(random.choice(by_type["dress"]))
+            else:
+                continue
+
+            if outfit_garments[-1].type == "top" and "bottom" in by_type and by_type["bottom"]:
+                outfit_garments.append(random.choice(by_type["bottom"]))
+
+            if "outerwear" in by_type and by_type["outerwear"] and random.random() < 0.3:
+                outfit_garments.append(random.choice(by_type["outerwear"]))
+
+            if "shoes" in by_type and by_type["shoes"] and random.random() < 0.5:
+                outfit_garments.append(random.choice(by_type["shoes"]))
+
+            if "accessory" in by_type and by_type["accessory"] and random.random() < 0.3:
+                outfit_garments.append(random.choice(by_type["accessory"]))
+
+            if len(outfit_garments) >= 2:
+                outfit = Outfit(name=f"{occasion.title()} Outfit", occasion=occasion, season=season)
+                outfit.garments = outfit_garments  # type: ignore
+                outfits.append(outfit)
+
+        return outfits
+
+    def _score_outfit(self, outfit: Outfit, occasion: str) -> float:
+        return self._score_outfit_from_garments(outfit.garments, occasion)  # type: ignore
+
+    def _score_outfit_from_garments(self, garments: list[Garment], occasion: str) -> float:
         if not garments:
-            return f"A {occasion} outfit."
-        
-        parts = []
-        colors = [g.color_name for g in garments]
-        types = [g.type for g in garments]
-        
-        if len(set(colors)) == 1:
-            parts.append(f"Monochromatic {colors[0]} ensemble")
-        elif len(colors) == 2:
-            parts.append(f"{colors[0]} and {colors[1]} combination")
-        else:
-            parts.append(f"Multi-color outfit with {', '.join(colors[:-1])} and {colors[-1]}")
-        
-        parts.append(f"featuring {', '.join(types)}")
-        parts.append(f"for {occasion}")
-        
-        if context:
-            parts.append(f"({context})")
-        
-        return ". ".join(parts) + "."
-    
-    def _get_style_description(self, formality: int) -> str:
-        styles = {1: "casual", 2: "smart-casual", 3: "business-casual", 4: "formal", 5: "black-tie"}
-        return styles.get(formality, "stylish")
-    
-    def _generate_style_tips(self, garments: list[GarmentRead], outfit: OutfitRead) -> list[str]:
-        tips = []
-        
-        # Color harmony tips
-        colors = [g.color_name for g in garments]
-        if len(set(colors)) <= 2:
-            tips.append("Monochromatic or two-tone palette creates cohesive look")
-        elif len(colors) >= 4:
-            tips.append("Consider reducing color count for more polished appearance")
-        
-        # Pattern tips
+            return 0.0
+
+        occasion_formality = {
+            "casual": 1,
+            "work": 2,
+            "party": 3,
+            "date": 2,
+            "formal": 4,
+            "wedding": 5,
+            "travel": 2,
+        }
+        target = occasion_formality.get(occasion, 2)
+
+        avg_formality = sum(g.formality for g in garments) / len(garments)
+        formality_score = max(0, 100 - abs(avg_formality - target) * 20)
+
+        # Color harmony (simplified)
+        colors = set(g.color_name for g in garments)
+        color_score = 80 if len(colors) <= 3 else 60
+
+        # Pattern balance
         patterns = [g.pattern for g in garments if g.pattern != "solid"]
-        if len(patterns) >= 2:
-            tips.append("Multiple patterns - ensure different scales for balance")
-        elif len(patterns) == 1:
-            tips.append(f"Single {patterns[0]} pattern adds visual interest")
-        
-        # Formality tips
+        pattern_score = 90 if len(patterns) <= 1 else (70 if len(patterns) == 2 else 50)
+
+        return formality_score * 0.5 + color_score * 0.3 + pattern_score * 0.2
+
+    def _get_score_breakdown(self, outfit: Outfit) -> dict[str, float]:
+        return {
+            "color_harmony": 75.0,
+            "formality_match": 80.0,
+            "pattern_balance": 70.0,
+            "seasonal": 85.0,
+        }
+
+    def _generate_tips(self, outfit: Outfit) -> list[str]:
+        tips = []
+        garments = outfit.garments  # type: ignore
+
+        colors = set(g.color_name for g in garments)
+        if len(colors) <= 2:
+            tips.append("Monochromatic look creates a sleek, elongated silhouette.")
+
+        patterns = [g.pattern for g in garments if g.pattern != "solid"]
+        if len(patterns) > 1:
+            tips.append("Mix patterns carefully - vary scale (large + small) for balance.")
+
         formalities = [g.formality for g in garments]
         if max(formalities) - min(formalities) > 2:
-            tips.append("Mix of formalities - anchor with most formal piece")
-        
-        # Occasion-specific tips
-        if outfit.occasion == "work":
-            tips.append("Ensure shoulders covered and hemlines appropriate")
-        elif outfit.occasion == "party":
-            tips.append("Add statement accessory to elevate the look")
-        elif outfit.occasion == "casual":
-            tips.append("Roll sleeves or cuff pants for relaxed vibe")
-        
-        return tips[:5]  # Limit to 5 tips
+            tips.append("Balance formal and casual pieces - one statement piece is enough.")
+
+        return tips if tips else ["Great combination! This outfit works well together."]
+
+    def _versatility_score(self, garment: Garment) -> float:
+        score = 0.5
+        neutral_colors = {"black", "white", "gray", "grey", "navy", "beige", "khaki"}
+        if garment.color_name.lower() in neutral_colors:
+            score += 0.3
+        versatile_types = {"top", "bottom", "outerwear"}
+        if garment.type in versatile_types:
+            score += 0.2
+        return min(1.0, score)
+
+    def _select_daily_outfit(self, garments: list[Garment], occasion: str) -> list[Garment]:
+        import random
+
+        by_type = {}
+        for g in garments:
+            by_type.setdefault(g.type, []).append(g)
+
+        outfit = []
+        if "top" in by_type and by_type["top"]:
+            outfit.append(random.choice(by_type["top"]))
+        elif "dress" in by_type and by_type["dress"]:
+            outfit.append(random.choice(by_type["dress"]))
+
+        if outfit and outfit[-1].type == "top" and "bottom" in by_type and by_type["bottom"]:
+            outfit.append(random.choice(by_type["bottom"]))
+
+        if "outerwear" in by_type and by_type["outerwear"] and random.random() < 0.3:
+            outfit.append(random.choice(by_type["outerwear"]))
+
+        if "shoes" in by_type and by_type["shoes"] and random.random() < 0.5:
+            outfit.append(random.choice(by_type["shoes"]))
+
+        if "accessory" in by_type and by_type["accessory"] and random.random() < 0.3:
+            outfit.append(random.choice(by_type["accessory"]))
+
+        return outfit

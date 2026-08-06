@@ -1,4 +1,3 @@
-
 from sqlmodel import Session, select
 
 from backend.models import Garment, GarmentCreate, GarmentUpdate

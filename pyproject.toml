@@ -47,8 +47,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["backend*"]
-exclude = ["tests*", "data*", "deploy*", "frontend*"]
+include = ["backend*", "frontend*"]
+exclude = ["tests*", "data*", "deploy*"]
 
 [tool.ruff]
 line-length = 100
