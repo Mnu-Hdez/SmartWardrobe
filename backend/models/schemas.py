@@ -1,10 +1,14 @@
+# Smart Wardrobe - Pydantic Schemas
+# Request/Response models for API
+
 from datetime import datetime
-from enum import IntEnum, StrEnum
+from enum import Enum
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class GarmentType(StrEnum):
+class GarmentType(str, Enum):
     TOP = "top"
     BOTTOM = "bottom"
     DRESS = "dress"
@@ -13,7 +17,7 @@ class GarmentType(StrEnum):
     ACCESSORY = "accessory"
 
 
-class Season(StrEnum):
+class Season(str, Enum):
     SPRING = "spring"
     SUMMER = "summer"
     AUTUMN = "autumn"
@@ -21,151 +25,198 @@ class Season(StrEnum):
     ALL_SEASON = "all_season"
 
 
-class FormalityLevel(IntEnum):
-    CASUAL = 1
-    SMART_CASUAL = 2
-    BUSINESS_CASUAL = 3
-    FORMAL = 4
-    BLACK_TIE = 5
-
-
-class PatternType(StrEnum):
+class Pattern(str, Enum):
     SOLID = "solid"
     STRIPED = "striped"
-    CHECKERED = "checkered"
+    CHECKED = "checked"
     FLORAL = "floral"
     POLKA_DOT = "polka_dot"
     GEOMETRIC = "geometric"
     ABSTRACT = "abstract"
+    ANIMAL_PRINT = "animal_print"
+    PAISLEY = "paisley"
+    HOUNDSTOOTH = "houndstooth"
 
 
-class FeedbackType(StrEnum):
-    LIKE = "like"
-    DISLIKE = "dislike"
-    NEUTRAL = "neutral"
+class StyleRuleType(str, Enum):
+    COLOR_HARMONY = "color_harmony"
+    OCCASION_MATCH = "occasion_match"
+    SEASON_MATCH = "season_match"
+    FORMALITY_CAP = "formality_cap"
 
 
-class AIProviderType(StrEnum):
-    LOCAL = "local"
-    NIM = "nim"
+# ========== GARMENT SCHEMAS ==========
 
 
-# Base schemas
 class GarmentBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=200)
     brand: str | None = Field(None, max_length=100)
-    type: GarmentType
-    color_name: str = Field(..., max_length=50)
-    dominant_color_hex: str = Field(..., pattern=r"^#[0-9A-Fa-f]{6}$")
-    pattern: PatternType = PatternType.SOLID
-    formality: FormalityLevel = FormalityLevel.CASUAL
-    season: Season = Season.ALL_SEASON
-    material: str | None = Field(None, max_length=100)
+    type: str = Field(..., description="Garment type")
+    season: str = Field(default=Season.ALL_SEASON)
     size: str | None = Field(None, max_length=20)
-    price: float | None = Field(None, ge=0)
-    purchase_date: datetime | None = None
-    raw_image_path: str | None = None
-    processed_image_path: str | None = None
-    segmentation_mask_path: str | None = None
-    notes: str | None = None
+    material: str | None = Field(None, max_length=100)
+    color_name: str = Field(..., max_length=50)
+    color_hex: str = Field(..., pattern=r"^#[0-9A-Fa-f]{6}$")
+    dominant_color_hex: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    pattern: str = Field(default=Pattern.SOLID)
+    formality: int = Field(default=1, ge=1, le=5)
 
 
 class GarmentCreate(GarmentBase):
+    """For creating a new garment (metadata only - image handled separately)"""
+
     pass
 
 
 class GarmentUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=100)
+    name: str | None = Field(None, min_length=1, max_length=200)
     brand: str | None = Field(None, max_length=100)
-    type: GarmentType | None = None
-    color_name: str | None = Field(None, max_length=50)
-    dominant_color_hex: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
-    pattern: PatternType | None = None
-    formality: FormalityLevel | None = None
-    season: Season | None = None
-    material: str | None = Field(None, max_length=100)
+    type: str | None = None
+    season: str | None = None
     size: str | None = Field(None, max_length=20)
-    price: float | None = Field(None, ge=0)
-    purchase_date: datetime | None = None
-    raw_image_path: str | None = None
-    processed_image_path: str | None = None
-    segmentation_mask_path: str | None = None
-    notes: str | None = None
-    is_favorite: bool | None = None
+    material: str | None = Field(None, max_length=100)
+    color_name: str | None = Field(None, max_length=50)
+    color_hex: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    pattern: str | None = None
+    formality: int | None = Field(None, ge=1, le=5)
 
 
-class GarmentRead(GarmentBase):
-    model_config = ConfigDict(from_attributes=True)
-
+class GarmentResponse(GarmentBase):
     id: int
-    is_favorite: bool
-    wear_count: int
+    raw_image_path: str
+    processed_image_path: str
     created_at: datetime
     updated_at: datetime
 
-
-class GarmentWithScore(GarmentRead):
-    score: float = 0.0
-    bias_score: float = 0.0
+    model_config = ConfigDict(from_attributes=True)
 
 
-# Outfit schemas
-class OutfitGarmentLinkBase(BaseModel):
+class GarmentListResponse(BaseModel):
+    garments: list[GarmentResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+# ========== OUTFIT SCHEMAS ==========
+
+
+class OutfitItemResponse(BaseModel):
+    id: int
     garment_id: int
-    position: int = 0
+    position: int
+    garment: GarmentResponse
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OutfitBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    occasion: str = Field(..., max_length=100)
-    season: Season = Season.ALL_SEASON
-    formality: int = Field(default=1, ge=1, le=5)
-    score: float = Field(default=0.0, ge=0.0, le=100.0)
-    is_packing: bool = False
-    notes: str | None = None
+    name: str | None = Field(None, max_length=200)
+    occasion: str
+    season: str
+    score: float | None = None
+    score_breakdown: dict[str, float] | None = None
+    ai_tips: list[str] | None = None
 
 
 class OutfitCreate(OutfitBase):
-    garment_ids: list[int] = Field(..., min_length=1, max_length=10)
+    garment_ids: list[int] = Field(..., min_length=1)
 
 
 class OutfitUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=100)
-    occasion: str | None = Field(None, max_length=100)
-    season: Season | None = None
-    score: float | None = Field(None, ge=0.0, le=100.0)
-    is_packing: bool | None = None
-    notes: str | None = None
-    garment_ids: list[int] | None = None
+    name: str | None = Field(None, max_length=200)
+    occasion: str | None = None
+    season: str | None = None
+    score: float | None = None
+    score_breakdown: dict[str, float] | None = None
+    ai_tips: list[str] | None = None
 
 
-class OutfitRead(OutfitBase):
+class OutfitResponse(OutfitBase):
+    id: int
+    items: list[OutfitItemResponse] = []
+    created_at: datetime
+
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    created_at: datetime
-    updated_at: datetime
+
+class OutfitListResponse(BaseModel):
+    outfits: list[OutfitResponse]
+    total: int
+    page: int
+    page_size: int
 
 
-class OutfitWithGarments(OutfitRead):
-    garments: list[GarmentRead] = []
+# ========== RECOMMENDATION SCHEMAS ==========
 
 
-# Style Rule schemas
-class StyleRuleType(StrEnum):
-    COLOR_HARMONY = "color_harmony"
-    FORMALITY_MATCH = "formality_match"
-    PATTERN_BALANCE = "pattern_balance"
-    SEASON_MATCH = "season_match"
-    OCCASION_MATCH = "occasion_match"
+class OutfitRecommendationRequest(BaseModel):
+    occasion: str
+    season: str = Season.ALL_SEASON
+    formality: int | None = Field(None, ge=1, le=5)
+    top_n: int = Field(default=1, ge=1, le=10)
+    exclude_garment_ids: list[int] | None = None
+
+
+class OutfitRecommendationResponse(BaseModel):
+    outfits: list[OutfitResponse]
+    total_garments_analyzed: int
+    processing_time_ms: float
+
+
+# ========== FEEDBACK SCHEMAS ==========
+
+
+class FeedbackRequest(BaseModel):
+    outfit_id: int | None = None
+    garment_id: int | None = None
+    rating: int = Field(..., ge=-1, le=1)  # -1: dislike, 1: like
+    feedback_type: str = Field(..., pattern=r"^(outfit|garment)$")
+
+
+class FeedbackResponse(BaseModel):
+    success: bool
+    message: str
+
+
+# ========== PACKING SCHEMAS ==========
+
+
+class PackingPlanRequest(BaseModel):
+    days: int = Field(..., ge=1, le=30)
+    occasion: str = "travel"
+    season: str = Season.ALL_SEASON
+    max_items: int = Field(..., ge=5, le=30)
+
+
+class PackingPlanItem(BaseModel):
+    garment: GarmentResponse
+    versatility_score: float
+    days_covered: int
+
+
+class PackingOutfit(BaseModel):
+    name: str
+    score: float
+    garments: list[GarmentResponse]
+
+
+class PackingPlanResponse(BaseModel):
+    outfits: list[PackingOutfit]
+    packing_list: list[PackingPlanItem]
+    total_items: int
+    days_covered: int
+    mix_and_match_ratio: float
+
+
+# ========== STYLE RULE SCHEMAS ==========
 
 
 class StyleRuleBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    description: str | None = None
-    rule_type: StyleRuleType
-    weight: float = Field(default=1.0, ge=0.0, le=10.0)
-    parameters: dict = Field(default_factory=dict)
+    name: str = Field(..., min_length=1, max_length=200)
+    rule_type: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    weight: float = Field(default=1.0, gt=0)
     is_active: bool = True
 
 
@@ -174,147 +225,104 @@ class StyleRuleCreate(StyleRuleBase):
 
 
 class StyleRuleUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=100)
-    description: str | None = None
-    rule_type: StyleRuleType | None = None
-    weight: float | None = Field(None, ge=0.0, le=10.0)
-    parameters: dict | None = None
+    name: str | None = Field(None, min_length=1, max_length=200)
+    rule_type: str | None = None
+    parameters: dict[str, Any] | None = None
+    weight: float | None = Field(None, gt=0)
     is_active: bool | None = None
 
 
-class StyleRuleRead(StyleRuleBase):
-    model_config = ConfigDict(from_attributes=True)
-
+class StyleRuleResponse(StyleRuleBase):
     id: int
     created_at: datetime
-    updated_at: datetime
 
-    # Parse JSON string back to dict when reading from DB
-    @field_validator("parameters", mode="before")
-    @classmethod
-    def parse_parameters(cls, v):
-        import json
-        if isinstance(v, str):
-            v = v.strip()
-            if not v:
-                return {}
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                return {}
-        return v or {}
-
-
-# Feedback schemas
-class FeedbackBase(BaseModel):
-    rating: int = Field(..., ge=-1, le=1)  # -1 dislike, 0 neutral, 1 like
-    feedback_type: FeedbackType
-    comment: str | None = None
-
-
-class UserFeedbackCreate(FeedbackBase):
-    garment_id: int | None = None
-    outfit_id: int | None = None
-    context: str | None = None
-
-
-class UserFeedbackRead(FeedbackBase):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
-    user_id: int | None = None
-    garment_id: int | None = None
-    outfit_id: int | None = None
-    created_at: datetime
+
+class StyleRuleListResponse(BaseModel):
+    rules: list[StyleRuleResponse]
+    total: int
 
 
-# AI Provider schemas
-class AIProviderConfig(BaseModel):
-    provider_type: AIProviderType
-    api_key: str | None = None
-    api_url: str | None = None
-    model: str | None = None
+# ========== HEALTH SCHEMAS ==========
+
+
+class HealthResponse(BaseModel):
+    status: str
+    database: str
+    ai_provider: str
+    version: str = "1.0.0"
+
+
+# ========== AI PROVIDER SCHEMAS ==========
+
+
+class AIProviderType(str, Enum):
+    LOCAL = "local"
+    NIM = "nim"
+
+
+class FeedbackType(str, Enum):
+    LIKE = "like"
+    DISLIKE = "dislike"
+
+
+class FormalityLevel(int, Enum):
+    CASUAL = 1
+    SMART_CASUAL = 2
+    BUSINESS_CASUAL = 3
+    FORMAL = 4
+    BLACK_TIE = 5
+
+
+class GarmentRead(GarmentResponse):
+    pass
+
+
+class OutfitRead(OutfitResponse):
+    pass
 
 
 class EnhanceRequest(BaseModel):
     outfit: OutfitRead
     context: str = ""
-    user_preferences: dict = Field(default_factory=dict)
+    user_preferences: dict[str, Any] | None = None
 
 
 class EnhanceResponse(BaseModel):
     enhanced_description: str
     style_tips: list[str] = []
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(ge=0, le=1)
 
 
-# Recommendation schemas
-class RecommendationRequest(BaseModel):
-    occasion: str = Field(..., max_length=100)
-    season: Season = Season.ALL_SEASON
-    formality: FormalityLevel | None = None
-    garment_ids: list[int] | None = None
-    exclude_garment_ids: list[int] | None = None
-    top_n: int = Field(default=5, ge=1, le=20)
-    use_ai_enhancement: bool = False
-
-
-class OutfitRecommendationRequest(BaseModel):
-    occasion: str = Field(..., max_length=100)
-    season: Season = Season.ALL_SEASON
-    formality: FormalityLevel | None = None
-    garment_ids: list[int] | None = None
-    exclude_garment_ids: list[int] | None = None
-    top_n: int = Field(default=5, ge=1, le=20)
-
-
-class OutfitRecommendationResponse(BaseModel):
-    outfits: list[OutfitWithGarments] = []
-    total_found: int = 0
-
-
-# Packing schemas
-class PackingRequest(BaseModel):
-    days: int = Field(..., ge=1, le=30)
-    occasion: str = Field(..., max_length=100)
-    season: Season = Season.ALL_SEASON
-    garment_ids: list[int] | None = None
-    max_items: int = Field(default=15, ge=5, le=30)
-
-
-class PackingResponse(BaseModel):
-    outfits: list[OutfitWithGarments] = []
-    garment_ids_used: list[int] = []
-    mix_and_match_ratio: float = 0.0
-    total_items: int = 0
-
-
-# Feedback schemas
-class RateOutfitRequest(BaseModel):
-    outfit_id: int
+class UserFeedbackCreate(BaseModel):
+    outfit_id: int | None = None
+    garment_id: int | None = None
     rating: int = Field(..., ge=-1, le=1)
-    comment: str | None = None
+    feedback_type: FeedbackType
+    context: str | None = None
 
 
-class RateGarmentRequest(BaseModel):
-    garment_id: int
-    rating: int = Field(..., ge=-1, le=1)
-    comment: str | None = None
+class UserFeedbackRead(BaseModel):
+    id: int
+    outfit_id: int | None = None
+    garment_id: int | None = None
+    rating: int
+    feedback_type: FeedbackType
+    context: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
-# Health check
-class HealthResponse(BaseModel):
-    status: str = "healthy"
-    version: str
-    timestamp: datetime
-    database: str = "connected"
-    ai_provider: str
+# Aliases for test compatibility
+PackingRequest = PackingPlanRequest
+PackingResponse = PackingPlanResponse
+OutfitRecommendationRequest = OutfitRecommendationRequest
+StyleRuleRead = StyleRuleResponse
+PatternType = Pattern
 
-
-# Pagination
-class PaginatedResponse(BaseModel):
-    items: list[BaseModel] = []
-    total: int
-    page: int
-    page_size: int
-    total_pages: int
+# Backward compatibility aliases for tests
+UserFeedback = UserFeedbackCreate
+UserFeedbackRead = UserFeedbackRead
+OutfitGarmentLink = OutfitItemResponse

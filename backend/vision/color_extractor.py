@@ -1,188 +1,141 @@
+# Smart Wardrobe - Vision Pipeline
+# ColorThief for dominant color extraction
 
-import numpy as np
-from colorthief import ColorThief  # type: ignore[import-untyped]
+import colorsys
+import logging
+
 from PIL import Image
-from sklearn.cluster import KMeans  # type: ignore[import-untyped]
-from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ColorExtractor:
-    """Extract dominant colors from garment images."""
+    """Extract dominant color from garment image using ColorThief algorithm"""
 
-    def __init__(self, quality: int = 10):
-        self.quality = quality
+    def __init__(self):
+        pass
 
-    def extract_dominant_color(self, image_path: str, mask_path: Optional[str] = None) -> tuple[str, str]:
+    def get_dominant_color(self, image: Image.Image, quality: int = 10) -> dict[str, any]:
         """
         Extract dominant color from image.
-
-        Returns:
-            Tuple of (hex_color, color_name)
+        Returns dict with hex, rgb, and color name.
         """
-        # Use mask if available to extract only garment
-        if mask_path:
-            return self._extract_with_mask(image_path, mask_path)
+        # Resize for speed
+        img = image.copy()
+        img.thumbnail((200, 200), Image.Resampling.LANCZOS)
 
-        # Fallback to whole image
-        color_thief = ColorThief(image_path)
-        dominant_color = color_thief.get_color(quality=self.quality)
-        hex_color = self._rgb_to_hex(dominant_color)
-        color_name = self._get_color_name(dominant_color)
+        # Convert to RGB
+        img = img.convert("RGB")
+        pixels = img.getdata()
 
-        return hex_color, color_name
+        # Simple color quantization - count color frequencies
+        color_counts = {}
+        for pixel in pixels[::quality]:  # Sample every nth pixel
+            # Quantize to reduce color space
+            r, g, b = pixel
+            r = (r // 32) * 32
+            g = (g // 32) * 32
+            b = (b // 32) * 32
+            key = (r, g, b)
+            color_counts[key] = color_counts.get(key, 0) + 1
 
-    def extract_palette(
-        self, image_path: str, color_count: int = 5, mask_path: Optional[str] = None
-    ) -> list[tuple[str, str]]:
-        """Extract color palette from image."""
-        if mask_path:
-            return self._extract_palette_with_mask(image_path, mask_path, color_count)
+        if not color_counts:
+            return {"hex": "#666666", "rgb": (102, 102, 102), "name": "Gray"}
 
-        color_thief = ColorThief(image_path)
-        palette = color_thief.get_palette(color_count=color_count, quality=self.quality)
+        # Get most frequent color
+        dominant = max(color_counts, key=color_counts.get)
+        r, g, b = dominant
 
-        return [(self._rgb_to_hex(c), self._get_color_name(c)) for c in palette]
+        # Convert to hex
+        hex_color = f"#{r:02x}{g:02x}{b:02x}"
 
-    def _extract_with_mask(self, image_path: str, mask_path: str) -> tuple[str, str]:
-        """Extract color from masked region only."""
-        image = Image.open(image_path).convert("RGB")
-        mask = Image.open(mask_path).convert("L")
+        # Get color name
+        name = self._rgb_to_name(r, g, b)
 
-        # Apply mask
-        image_np = np.array(image)
-        mask_np = np.array(mask) > 128
+        return {"hex": hex_color, "rgb": (r, g, b), "name": name}
 
-        # Get pixels where mask is True
-        masked_pixels = image_np[mask_np]
+    def get_palette(self, image: Image.Image, color_count: int = 5, quality: int = 10) -> list:
+        """Get color palette from image"""
+        img = image.copy()
+        img.thumbnail((200, 200), Image.Resampling.LANCZOS)
+        img = img.convert("RGB")
+        pixels = img.getdata()
 
-        if len(masked_pixels) == 0:
-            # Fallback to whole image
-            return self.extract_dominant_color(image_path)
+        color_counts = {}
+        for pixel in pixels[::quality]:
+            r, g, b = pixel
+            r = (r // 16) * 16
+            g = (g // 16) * 16
+            b = (b // 16) * 16
+            key = (r, g, b)
+            color_counts[key] = color_counts.get(key, 0) + 1
 
-        # Calculate average color of masked region
-        avg_color = np.mean(masked_pixels, axis=0).astype(int)
-        hex_color = self._rgb_to_hex(tuple(avg_color))
-        color_name = self._get_color_name(tuple(avg_color))
-
-        return hex_color, color_name
-
-    def _extract_palette_with_mask(
-        self, image_path: str, mask_path: str, color_count: int
-    ) -> list[tuple[str, str]]:
-        """Extract palette from masked region using k-means."""
-        from sklearn.cluster import KMeans
-
-        image = Image.open(image_path).convert("RGB")
-        mask = Image.open(mask_path).convert("L")
-
-        image_np = np.array(image)
-        mask_np = np.array(mask) > 128
-
-        masked_pixels = image_np[mask_np]
-
-        if len(masked_pixels) < color_count:
-            return self.extract_palette(image_path, color_count)
-
-        # K-means clustering
-        kmeans = KMeans(n_clusters=color_count, random_state=42, n_init=10)
-        kmeans.fit(masked_pixels)
-
-        # Get cluster centers and sort by frequency
-        centers = kmeans.cluster_centers_.astype(int)
-        labels = kmeans.labels_
-
-        # Count frequency of each cluster
-        unique, counts = np.unique(labels, return_counts=True)
-        sorted_indices = np.argsort(-counts)
+        # Sort by frequency
+        sorted_colors = sorted(color_counts.items(), key=lambda x: x[1], reverse=True)
 
         palette = []
-        for idx in sorted_indices:
-            color = tuple(centers[idx])
-            palette.append((self._rgb_to_hex(color), self._get_color_name(color)))
+        for (r, g, b), count in sorted_colors[:color_count]:
+            palette.append(
+                {
+                    "hex": f"#{r:02x}{g:02x}{b:02x}",
+                    "rgb": (r, g, b),
+                    "name": self._rgb_to_name(r, g, b),
+                    "percentage": count / sum(color_counts.values()),
+                }
+            )
 
         return palette
 
-    def _rgb_to_hex(self, rgb: tuple[int, int, int]) -> str:
-        """Convert RGB tuple to hex string."""
-        return f"#{max(0, min(255, rgb[0])):02X}{max(0, min(255, rgb[1])):02X}{max(0, min(255, rgb[2])):02X}"
+    def _rgb_to_name(self, r: int, g: int, b: int) -> str:
+        """Convert RGB to closest color name"""
+        # Simple color naming based on HSV
+        h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        h = h * 360
+        s = s * 100
+        v = v * 100
 
-    def _get_color_name(self, rgb: tuple[int, int, int]) -> str:
-        """Get human-readable color name from RGB."""
-        # Basic color name mapping
-        r, g, b = rgb
-
-        # Check for grayscale
-        if abs(r - g) < 15 and abs(g - b) < 15 and abs(r - b) < 15:
-            if r < 50:
-                return "black"
-            elif r < 100:
-                return "dark gray"
-            elif r < 150:
-                return "gray"
-            elif r < 200:
-                return "light gray"
+        # Grayscale
+        if s < 15:
+            if v < 20:
+                return "Black"
+            elif v < 40:
+                return "Dark Gray"
+            elif v < 60:
+                return "Gray"
+            elif v < 80:
+                return "Light Gray"
             else:
-                return "white"
+                return "White"
 
-        # Find dominant channel
-        max_val = max(r, g, b)
-        min_val = min(r, g, b)
+        # Hue-based naming
+        if h < 15 or h >= 345:
+            base = "Red"
+        elif h < 45:
+            base = "Orange"
+        elif h < 70:
+            base = "Yellow"
+        elif h < 150:
+            base = "Green"
+        elif h < 210:
+            base = "Cyan"
+        elif h < 260:
+            base = "Blue"
+        elif h < 290:
+            base = "Purple"
+        elif h < 330:
+            base = "Magenta"
+        else:
+            base = "Red"
 
-        # Color wheel approach
-        if r == max_val and g == min_val and b == min_val:
-            return "red"
-        elif g == max_val and r == min_val and b == min_val:
-            return "green"
-        elif b == max_val and r == min_val and g == min_val:
-            return "blue"
-        elif r == max_val and g == max_val and b == min_val:
-            return "yellow"
-        elif r == max_val and b == max_val and g == min_val:
-            return "magenta"
-        elif g == max_val and b == max_val and r == min_val:
-            return "cyan"
-
-        # More nuanced colors
-        if r > g and r > b:
-            if g > b * 1.5:
-                return "orange" if r > 200 else "brown"
-            elif b > g * 1.5:
-                return "purple"
+        # Saturation/value modifiers
+        if s < 50:
+            if v > 70:
+                return f"Pale {base}"
             else:
-                return "red" if r > 180 else "maroon"
-        elif g > r and g > b:
-            if r > b * 1.5:
-                return "olive"
-            elif b > r * 1.5:
-                return "teal"
-            else:
-                return "green"
-        elif b > r and b > g:
-            if r > g * 1.5:
-                return "pink"
-            elif g > r * 1.5:
-                return "turquoise"
-            else:
-                return "blue" if b > 150 else "navy"
-
-        # Pastel/muted colors
-        if max_val < 150 and min_val > 50:
-            return "muted " + self._get_color_name((r * 2, g * 2, b * 2))
-
-        return "unknown"
-
-
-def extract_colors_from_image(
-    image_path: str, mask_path: Optional[str] = None, palette_size: int = 5
-) -> dict:
-    """Convenience function to extract all color info."""
-    extractor = ColorExtractor()
-
-    dominant_hex, dominant_name = extractor.extract_dominant_color(image_path, mask_path)
-    palette = extractor.extract_palette(image_path, palette_size, mask_path)
-
-    return {
-        "dominant_color_hex": dominant_hex,
-        "dominant_color_name": dominant_name,
-        "palette": [{"hex": hex_, "name": name} for hex_, name in palette],
-    }
+                return f"Muted {base}"
+        elif v < 30:
+            return f"Dark {base}"
+        elif v > 80:
+            return f"Bright {base}"
+        else:
+            return base

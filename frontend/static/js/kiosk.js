@@ -2,6 +2,11 @@
 // Adaptive interface for /kiosk route - handles both dual-screen and single-screen modes
 
 import { api } from './api.js';
+import {
+    formatType, formatPattern, formatFormality, escapeHtml,
+    showToast, openModal, closeModal, prefersReducedMotion, triggerHaptic,
+    staggerAnimation, observeReveal
+} from './utils.js';
 
 /**
  * Kiosk UI Controller
@@ -17,74 +22,94 @@ class KioskUI {
             isLoading: false,
             layoutMode: 'auto', // 'auto', 'dual', 'single'
             screenWidth: window.innerWidth,
-            screenHeight: window.innerHeight
+            screenHeight: window.innerHeight,
+            stats: {}
         };
-        
+
         this.elements = {};
         this.resizeObserver = null;
-        
+
         this.init();
     }
-    
+
     async init() {
         this.cacheElements();
         this.bindEvents();
         this.detectLayoutMode();
         this.setupResizeObserver();
-        
+
         // Load initial outfit
         await this.loadOutfit();
-        
+
         // Load stats periodically
         this.loadStats();
         setInterval(() => this.loadStats(), 60000);
+
+        // Setup scroll reveal
+        observeReveal('.reveal-on-scroll');
     }
-    
+
     cacheElements() {
         // Main containers
         this.elements.visualizationPanel = document.querySelector('.visualization-panel');
         this.elements.touchPanel = document.querySelector('.touch-panel');
         this.elements.appContainer = document.querySelector('.app-container');
-        
+
         // Visualization elements
         this.elements.outfitDisplay = document.querySelector('.outfit-display');
         this.elements.refreshBtn = document.getElementById('refreshBtn');
-        
+        this.elements.occasionSelect = document.getElementById('occasionSelect');
+
         // Touch panel elements
         this.elements.occasionGrid = document.querySelector('.occasion-grid');
         this.elements.seasonGrid = document.querySelector('.season-grid');
         this.elements.generateBtn = document.getElementById('generateBtn');
         this.elements.packingBtn = document.getElementById('packingBtn');
-        
+        this.elements.wardrobeBtn = document.getElementById('wardrobeBtn');
+
         // Stats
         this.elements.totalGarments = document.getElementById('totalGarments');
         this.elements.totalOutfits = document.getElementById('totalOutfits');
         this.elements.avgScore = document.getElementById('avgScore');
         this.elements.favorites = document.getElementById('favorites');
-        
-        // Modals (referenced from index.html)
+
+        // Modals
         this.elements.packingModal = document.getElementById('packingModal');
         this.elements.packingResultModal = document.getElementById('packingResultModal');
         this.elements.wardrobeModal = document.getElementById('wardrobeModal');
-        this.elements.addGarmentModal = document.getElementById('addGarmentModal');
+        this.elements.packingForm = document.getElementById('packingForm');
+        this.elements.packingResultBody = document.getElementById('packingResultBody');
+        this.elements.wardrobeGrid = document.getElementById('wardrobeGrid');
     }
-    
+
     bindEvents() {
         // Refresh button
         if (this.elements.refreshBtn) {
             this.elements.refreshBtn.addEventListener('click', () => this.loadOutfit());
         }
-        
+
+        // Occasion select (header)
+        if (this.elements.occasionSelect) {
+            this.elements.occasionSelect.addEventListener('change', (e) => {
+                this.selectOccasion(e.target.value);
+            });
+        }
+
         // Generate button (touch panel)
         if (this.elements.generateBtn) {
             this.elements.generateBtn.addEventListener('click', () => this.loadOutfit());
         }
-        
+
         // Packing button
         if (this.elements.packingBtn) {
             this.elements.packingBtn.addEventListener('click', () => this.openPackingModal());
         }
-        
+
+        // Wardrobe button
+        if (this.elements.wardrobeBtn) {
+            this.elements.wardrobeBtn.addEventListener('click', () => this.openWardrobeModal());
+        }
+
         // Occasion grid - event delegation
         if (this.elements.occasionGrid) {
             this.elements.occasionGrid.addEventListener('click', (e) => {
@@ -92,7 +117,7 @@ class KioskUI {
                 if (btn) this.selectOccasion(btn.dataset.occasion);
             });
         }
-        
+
         // Season grid - event delegation
         if (this.elements.seasonGrid) {
             this.elements.seasonGrid.addEventListener('click', (e) => {
@@ -100,7 +125,7 @@ class KioskUI {
                 if (btn) this.selectSeason(btn.dataset.season);
             });
         }
-        
+
         // Modal close buttons
         document.querySelectorAll('.modal-close, [data-modal-close]').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -108,7 +133,7 @@ class KioskUI {
                 if (modal) this.closeModal(modal);
             });
         });
-        
+
         // Modal overlays
         document.querySelectorAll('.modal-overlay').forEach(overlay => {
             overlay.addEventListener('click', (e) => {
@@ -116,47 +141,50 @@ class KioskUI {
                 if (modal) this.closeModal(modal);
             });
         });
-        
+
         // Packing form
-        const packingForm = document.getElementById('packingForm');
-        if (packingForm) {
-            packingForm.addEventListener('submit', (e) => this.handlePackingSubmit(e));
+        if (this.elements.packingForm) {
+            this.elements.packingForm.addEventListener('submit', (e) => this.handlePackingSubmit(e));
         }
-        
+
         // Escape key to close modals
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal:not(.hidden)').forEach(modal => this.closeModal(modal));
             }
         });
-        
+
         // Touch gestures for navigation
         this.bindTouchGestures();
+
+        // Initialize occasion/season grids
+        this.renderOccasionGrid();
+        this.renderSeasonGrid();
     }
-    
+
     bindTouchGestures() {
         let touchStartX = 0;
         let touchStartY = 0;
-        
+
         const visualizationPanel = this.elements.visualizationPanel;
         if (!visualizationPanel) return;
-        
+
         visualizationPanel.addEventListener('touchstart', (e) => {
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
         }, { passive: true });
-        
+
         visualizationPanel.addEventListener('touchend', (e) => {
             const touchEndX = e.changedTouches[0].clientX;
             const touchEndY = e.changedTouches[0].clientY;
-            
+
             const deltaX = touchEndX - touchStartX;
             const deltaY = touchEndY - touchStartY;
-            
+
             // Horizontal swipe detection (min 50px, more horizontal than vertical)
             if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
                 if (deltaX > 0) {
-                    // Swipe right - previous outfit (could implement history)
+                    // Swipe right - previous outfit
                     this.loadOutfit();
                 } else {
                     // Swipe left - next outfit
@@ -166,20 +194,20 @@ class KioskUI {
             }
         }, { passive: true });
     }
-    
+
     detectLayoutMode() {
         const width = window.innerWidth;
         const height = window.innerHeight;
-        
+
         this.state.screenWidth = width;
         this.state.screenHeight = height;
-        
+
         // Auto-detect layout based on screen size and aspect ratio
         // Dual screen mode: wide screens (landscape tablets, dual monitors)
         // Single screen mode: narrow screens (phones, portrait tablets)
-        
+
         let mode = 'single';
-        
+
         if (width >= 1024 && width > height) {
             // Wide landscape - dual panel
             mode = 'dual';
@@ -187,33 +215,33 @@ class KioskUI {
             // Tablet landscape - dual panel
             mode = 'dual';
         }
-        
+
         this.setLayoutMode(mode);
     }
-    
+
     setLayoutMode(mode) {
         if (mode === this.state.layoutMode) return;
-        
+
         this.state.layoutMode = mode;
         const container = this.elements.appContainer;
-        
+
         if (!container) return;
-        
+
         // Remove all layout classes
         container.classList.remove('layout-dual', 'layout-single');
-        
+
         // Add new layout class
         container.classList.add(`layout-${mode}`);
-        
+
         // Update CSS custom properties for dynamic layout
         document.documentElement.style.setProperty('--layout-mode', mode);
-        
+
         // Trigger reflow for smooth transition
         container.offsetHeight;
-        
+
         console.log(`Layout mode changed to: ${mode}`);
     }
-    
+
     setupResizeObserver() {
         // Debounced resize handler
         let resizeTimeout;
@@ -224,28 +252,28 @@ class KioskUI {
             }, 150);
         });
     }
-    
+
     // ========== OUTFIT LOADING ==========
-    
+
     async loadOutfit() {
         if (this.state.isLoading) return;
-        
+
         this.state.isLoading = true;
         this.showLoading();
-        
+
         try {
             const params = {
                 occasion: this.state.selectedOccasion,
                 season: this.state.selectedSeason,
                 top_n: 1
             };
-            
+
             if (this.state.selectedFormality) {
                 params.formality = this.state.selectedFormality;
             }
-            
+
             const response = await api.recommendOutfits(params);
-            
+
             if (response.outfits && response.outfits.length > 0) {
                 this.state.currentOutfit = response.outfits[0];
                 this.renderOutfit(this.state.currentOutfit);
@@ -259,39 +287,55 @@ class KioskUI {
             this.state.isLoading = false;
         }
     }
-    
+
     showLoading() {
         const display = this.elements.outfitDisplay;
         if (!display) return;
-        
+
         display.innerHTML = `
             <div class="outfit-loading">
-                <div class="spinner"></div>
-                <p>Generando outfit para ${this.formatOccasion(this.state.selectedOccasion)}...</p>
-            </div>
-        `;
+                <div class="skeleton">
+                    <div class="skeleton-image"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton-title"></div>
+                        <div class="skeleton-tags">
+                            <div class="skeleton-tag"></div>
+                            <div class="skeleton-tag"></div>
+                            <div class="skeleton-tag"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="skeleton" style="margin-top: 16px;">
+                    <div class="skeleton-image"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton-title" style="width: 50%;"></div>
+                        <div class="skeleton-tags"><div class="skeleton-tag"></div></div>
+                    </div>
+                </div>
+            `;
     }
-    
+
     showEmptyState() {
         const display = this.elements.outfitDisplay;
         if (!display) return;
-        
+
         display.innerHTML = `
             <div class="outfit-empty">
                 <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                     <circle cx="12" cy="7" r="4"></circle>
                 </svg>
-                <h3>No hay prendas suficientes</h3>
-                <p>Agrega al menos 2 prendas a tu armario para generar outfits</p>
+                <h3>Not enough garments</h3>
+                <p>Add at least 2 garments to your wardrobe to generate outfits</p>
+                <button class="btn btn-primary" onclick="kioskUI.loadOutfit()">Retry</button>
             </div>
         `;
     }
-    
+
     showError(message) {
         const display = this.elements.outfitDisplay;
         if (!display) return;
-        
+
         display.innerHTML = `
             <div class="outfit-empty">
                 <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -299,20 +343,20 @@ class KioskUI {
                     <line x1="15" y1="9" x2="9" y2="15"></line>
                     <line x1="9" y1="9" x2="15" y2="15"></line>
                 </svg>
-                <h3>Error al cargar</h3>
-                <p>${this.escapeHtml(message)}</p>
-                <button class="btn btn-primary" onclick="kioskUI.loadOutfit()">Reintentar</button>
+                <h3>Error loading</h3>
+                <p>${escapeHtml(message)}</p>
+                <button class="btn btn-primary" onclick="kioskUI.loadOutfit()">Retry</button>
             </div>
         `;
     }
-    
+
     renderOutfit(outfit) {
         const score = outfit.score || 0;
-        
+
         let html = `
             <div class="outfit-result">
                 <div class="outfit-header">
-                    <h2 class="outfit-name">${this.escapeHtml(outfit.name || 'Outfit Recomendado')}</h2>
+                    <h2 class="outfit-name">${escapeHtml(outfit.name || 'Recommended Outfit')}</h2>
                     <div class="outfit-score">
                         <span class="score-value">${score.toFixed(0)}</span>
                         <span class="score-label">/100</span>
@@ -320,79 +364,79 @@ class KioskUI {
                 </div>
                 <div class="outfit-garments">
         `;
-        
+
         if (outfit.garments && outfit.garments.length > 0) {
             outfit.garments.forEach(garment => {
-                            const colorHex = garment.color_hex || '#666666';
-                            // Use raw_image_path for high-quality display - serve via /images/raw/
-                            const imageUrl = garment.raw_image_path
-                                ? `/images/raw/${garment.raw_image_path.replace(/^.*[\\/]/, '')}`
-                                : garment.processed_image_path
-                                    ? `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\/]/, '')}`
-                                    : null;
-                
+                const colorHex = garment.color_hex || '#666666';
+                // Use raw_image_path for high-quality display - serve via /images/raw/
+                const imageUrl = garment.raw_image_path
+                    ? `/images/raw/${garment.raw_image_path.replace(/^.*[\\\/]/, '')}`
+                    : garment.processed_image_path
+                        ? `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\\/]/, '')}`
+                        : null;
+
                 html += `
                     <article class="garment-card" data-garment-id="${garment.id}">
-                        ${imageUrl 
-                            ? `<img class="garment-image" src="${imageUrl}" alt="${this.escapeHtml(garment.name)}" loading="lazy">`
+                        ${imageUrl
+                            ? `<img class="garment-image" src="${imageUrl}" alt="${escapeHtml(garment.name)}" loading="lazy">`
                             : `<div class="garment-image" style="background-color: ${colorHex};"></div>`
                         }
                         <div class="garment-info">
-                            <h3 class="garment-name">${this.escapeHtml(garment.name)}</h3>
+                            <h3 class="garment-name">${escapeHtml(garment.name)}</h3>
                             <div class="garment-meta">
-                                <span class="garment-tag type">${this.formatType(garment.type)}</span>
-                                <span class="garment-tag color" style="--tag-color: ${colorHex}">${this.escapeHtml(garment.color_name)}</span>
-                                <span class="garment-tag">${this.formatPattern(garment.pattern)}</span>
-                                <span class="garment-tag">${this.formatFormality(garment.formality)}</span>
+                                <span class="tag tag-type">${formatType(garment.type)}</span>
+                                <span class="tag tag-color" style="--tag-color: ${colorHex}">${escapeHtml(garment.color_name)}</span>
+                                <span class="tag">${formatPattern(garment.pattern)}</span>
+                                <span class="tag">${formatFormality(garment.formality)}</span>
                             </div>
                         </div>
                     </article>
                 `;
             });
         }
-        
+
         html += `
                 </div>
         `;
-        
+
         // Description and tips
         if (outfit.score_breakdown) {
             html += `
                 <div class="outfit-description">
-                    <p>Color ${outfit.score_breakdown.color_harmony?.toFixed(0) || 0}% | 
-                    Formalidad ${outfit.score_breakdown.formality_match?.toFixed(0) || 0}% | 
-                    Patrones ${outfit.score_breakdown.pattern_balance?.toFixed(0) || 0}% | 
-                    Temporada ${outfit.score_breakdown.seasonal?.toFixed(0) || 0}%</p>
+                    <p>Color ${outfit.score_breakdown.color_harmony?.toFixed(0) || 0}% |
+                    Formality ${outfit.score_breakdown.formality_match?.toFixed(0) || 0}% |
+                    Patterns ${outfit.score_breakdown.pattern_balance?.toFixed(0) || 0}% |
+                    Season ${outfit.score_breakdown.seasonal?.toFixed(0) || 0}%</p>
                 </div>
             `;
         }
-        
+
         // AI Tips if available
         if (outfit.ai_tips && outfit.ai_tips.length > 0) {
             html += `
                 <div class="outfit-tips">
-                    <h3>Consejos de estilo:</h3>
-                    <ul id="tipsList">
+                    <h3>Style Tips:</h3>
+                    <ul class="tips-list">
             `;
             outfit.ai_tips.forEach(tip => {
-                html += `<li class="tip-item">${this.escapeHtml(tip)}</li>`;
+                html += `<li class="tip-item">${escapeHtml(tip)}</li>`;
             });
             html += `
                     </ul>
                 </div>
             `;
         }
-        
+
         // Feedback buttons
         html += `
                 <div class="outfit-feedback">
-                    <button class="feedback-btn like-btn" data-outfit-id="${outfit.id}" data-rating="1" aria-label="Me gusta">
+                    <button class="feedback-btn like-btn" data-outfit-id="${outfit.id}" data-rating="1" aria-label="Like">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
                         </svg>
                         <span class="feedback-count">0</span>
                     </button>
-                    <button class="feedback-btn dislike-btn" data-outfit-id="${outfit.id}" data-rating="-1" aria-label="No me gusta">
+                    <button class="feedback-btn dislike-btn" data-outfit-id="${outfit.id}" data-rating="-1" aria-label="Dislike">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path>
                         </svg>
@@ -401,64 +445,67 @@ class KioskUI {
                 </div>
             </div>
         `;
-        
+
         const display = this.elements.outfitDisplay;
         if (display) {
             display.innerHTML = html;
             this.bindFeedbackButtons();
         }
     }
-    
+
     bindFeedbackButtons() {
         document.querySelectorAll('.feedback-btn').forEach(btn => {
             btn.addEventListener('click', (e) => this.handleFeedback(e));
         });
     }
-    
+
     async handleFeedback(event) {
         const btn = event.currentTarget;
         const outfitId = parseInt(btn.dataset.outfitId);
         const rating = parseInt(btn.dataset.rating);
-        
+
         // Toggle active state
         const isLike = rating > 0;
         const otherBtn = btn.parentElement.querySelector(isLike ? '.dislike-btn' : '.like-btn');
-        
+
         if (btn.classList.contains('active')) {
             btn.classList.remove('active');
         } else {
             btn.classList.add('active');
             otherBtn?.classList.remove('active');
-            
+
             try {
                 await api.rateOutfit({
                     outfit_id: outfitId,
                     rating: rating,
                     feedback_type: 'outfit'
                 });
-                this.showToast(isLike ? '¡Gracias por tu like!' : 'Gracias por tu feedback', 'success');
+                showToast(isLike ? 'Thanks for your like!' : 'Thanks for your feedback', 'success');
                 this.triggerHaptic('success');
             } catch (error) {
-                this.showToast(`Error: ${error.message}`, 'error');
+                showToast(`Error: ${error.message}`, 'error');
                 btn.classList.remove('active');
             }
         }
     }
-    
+
     // ========== OCCASION/SEASON SELECTION ==========
-    
+
     selectOccasion(occasion) {
         this.state.selectedOccasion = occasion;
         this.updateOccasionButtons();
+        if (this.elements.occasionSelect) {
+            this.elements.occasionSelect.value = occasion;
+        }
         this.loadOutfit();
     }
-    
+
     selectSeason(season) {
         this.state.selectedSeason = season;
         this.updateSeasonButtons();
         this.loadOutfit();
     }
-    
+
     updateOccasionButtons() {
         document.querySelectorAll('.occasion-btn').forEach(btn => {
             const active = btn.dataset.occasion === this.state.selectedOccasion;
@@ -466,7 +513,7 @@ class KioskUI {
             btn.setAttribute('aria-pressed', active);
         });
     }
-    
+
     updateSeasonButtons() {
         document.querySelectorAll('.season-btn').forEach(btn => {
             const active = btn.dataset.season === this.state.selectedSeason;
@@ -474,52 +521,93 @@ class KioskUI {
             btn.setAttribute('aria-pressed', active);
         });
     }
-    
+
+    renderOccasionGrid() {
+        const occasions = [
+            { value: 'casual', label: 'Casual' },
+            { value: 'work', label: 'Work' },
+            { value: 'party', label: 'Party' },
+            { value: 'date', label: 'Date' },
+            { value: 'formal', label: 'Formal' },
+            { value: 'wedding', label: 'Wedding' }
+        ];
+
+        if (!this.elements.occasionGrid) return;
+
+        this.elements.occasionGrid.innerHTML = occasions.map(occ => `
+            <button class="occasion-btn ${this.state.selectedOccasion === occ.value ? 'active' : ''}"
+                    data-occasion="${occ.value}"
+                    aria-pressed="${this.state.selectedOccasion === occ.value}">
+                ${occ.label}
+            </button>
+        `).join('');
+    }
+
+    renderSeasonGrid() {
+        const seasons = [
+            { value: 'all_season', label: 'All Season' },
+            { value: 'spring', label: 'Spring' },
+            { value: 'summer', label: 'Summer' },
+            { value: 'autumn', label: 'Autumn' },
+            { value: 'winter', label: 'Winter' }
+        ];
+
+        if (!this.elements.seasonGrid) return;
+
+        this.elements.seasonGrid.innerHTML = seasons.map(s => `
+            <button class="season-btn ${this.state.selectedSeason === s.value ? 'active' : ''}"
+                    data-season="${s.value}"
+                    aria-pressed="${this.state.selectedSeason === s.value}">
+                ${s.label}
+            </button>
+        `).join('');
+    }
+
     // ========== STATS ==========
-    
+
     async loadStats() {
         try {
             const [garments, outfits] = await Promise.all([
                 api.getGarments({ limit: 1000 }).catch(() => []),
                 api.getOutfits({ limit: 1000 }).catch(() => [])
             ]);
-            
+
             this.state.stats = {
                 totalGarments: Array.isArray(garments) ? garments.length : 0,
                 totalOutfits: Array.isArray(outfits) ? outfits.length : 0,
                 avgScore: 0,
                 favorites: 0
             };
-            
+
             if (Array.isArray(outfits) && outfits.length > 0) {
                 const scores = outfits.map(o => o.score || 0).filter(s => s > 0);
-                this.state.stats.avgScore = scores.length > 0 
-                    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) 
+                this.state.stats.avgScore = scores.length > 0
+                    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
                     : 0;
             }
-            
+
             this.updateStatsDisplay();
         } catch (error) {
             console.error('Error loading stats:', error);
         }
     }
-    
+
     updateStatsDisplay() {
         if (this.elements.totalGarments) this.elements.totalGarments.textContent = this.state.stats.totalGarments;
         if (this.elements.totalOutfits) this.elements.totalOutfits.textContent = this.state.stats.totalOutfits;
         if (this.elements.avgScore) this.elements.avgScore.textContent = this.state.stats.avgScore;
         if (this.elements.favorites) this.elements.favorites.textContent = this.state.stats.favorites;
     }
-    
+
     // ========== PACKING MODAL ==========
-    
+
     openPackingModal() {
         this.openModal(this.elements.packingModal);
     }
-    
+
     async handlePackingSubmit(event) {
         event.preventDefault();
-        
+
         const formData = new FormData(event.target);
         const request = {
             days: parseInt(formData.get('packingDays') || '3'),
@@ -527,107 +615,107 @@ class KioskUI {
             season: formData.get('packingSeason') || 'all_season',
             max_items: parseInt(formData.get('packingMaxItems') || '15')
         };
-        
+
         this.closeModal(this.elements.packingModal);
-        
+
         try {
             const result = await api.createPackingPlan(request);
             this.renderPackingResult(result);
             this.openModal(this.elements.packingResultModal);
         } catch (error) {
-            this.showToast(`Error: ${error.message}`, 'error');
+            showToast(`Error: ${error.message}`, 'error');
         }
     }
-    
+
     renderPackingResult(result) {
         const body = this.elements.packingResultBody;
         if (!body) return;
-        
+
         const stats = result.total_items || 0;
         const days = result.days_covered || 0;
         const ratio = result.mix_and_match_ratio || 0;
-        
+
         let html = `
             <div class="packing-summary">
-                <h3>Resumen del Plan</h3>
+                <h3>Plan Summary</h3>
                 <div class="packing-stats">
                     <div class="packing-stat">
                         <div class="packing-stat-value">${stats}</div>
-                        <div class="packing-stat-label">Prendas totales</div>
+                        <div class="packing-stat-label">Total Items</div>
                     </div>
                     <div class="packing-stat">
                         <div class="packing-stat-value">${days}</div>
-                        <div class="packing-stat-label">Días cubiertos</div>
+                        <div class="packing-stat-label">Days Covered</div>
                     </div>
                     <div class="packing-stat">
                         <div class="packing-stat-value">${ratio.toFixed(2)}</div>
-                        <div class="packing-stat-label">Ratio mix-and-match</div>
+                        <div class="packing-stat-label">Mix & Match Ratio</div>
                     </div>
                 </div>
             </div>
             <div class="packing-outfits">
         `;
-        
+
         if (result.outfits && result.outfits.length > 0) {
             result.outfits.forEach((outfit, index) => {
                 html += `
                     <div class="packing-outfit">
                         <div class="packing-outfit-header">
-                            <span class="packing-outfit-title">Día ${index + 1}: ${this.escapeHtml(outfit.name || 'Outfit')}</span>
+                            <span class="packing-outfit-title">Day ${index + 1}: ${this.escapeHtml(outfit.name || 'Outfit')}</span>
                             <span class="packing-outfit-score">${(outfit.score || 0).toFixed(0)}/100</span>
                         </div>
                         <div class="packing-outfit-items">
                 `;
-                
+
                 if (outfit.garments) {
                     outfit.garments.forEach(g => {
                         const colorHex = g.color_hex || '#666666';
                         html += `
                             <span class="packing-outfit-item">
                                 <span class="packing-outfit-item-color" style="background-color: ${colorHex}"></span>
-                                ${this.escapeHtml(g.name)} (${this.formatType(g.type)})
+                                ${this.escapeHtml(g.name)} (${formatType(g.type)})
                             </span>
                         `;
                     });
                 }
-                
+
                 html += `
                         </div>
                     </div>
                 `;
             });
         } else {
-            html += '<p style="color: var(--text-muted); text-align: center; padding: 20px;">No se pudieron generar outfits</p>';
+            html += '<p style="color: var(--text-muted); text-align: center; padding: 20px;">Could not generate outfits</p>';
         }
-        
+
         html += '</div>';
-        
+
         // Packing list
         if (result.packing_list && result.packing_list.length > 0) {
             html += `
                 <div class="packing-list-section">
-                    <h3>Lista de Maleta</h3>
+                    <h3>Packing List</h3>
             `;
-            
+
             result.packing_list.forEach(item => {
                 const garment = item.garment;
                 const versatility = Math.round((item.versatility_score || 0) * 100);
                 const colorHex = garment.color_hex || '#666666';
-                const imageUrl = garment.raw_image_path 
-                    ? `/static/${garment.raw_image_path.replace(/^.*[\\/]/, '')}`
+                const imageUrl = garment.raw_image_path
+                    ? `/images/raw/${garment.raw_image_path.replace(/^.*[\\\/]/, '')}`
                     : garment.processed_image_path
-                        ? `/static/${garment.processed_image_path.replace(/^.*[\\/]/, '')}`
+                        ? `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\\/]/, '')}`
                         : null;
-                
+
                 html += `
                     <div class="packing-item-row">
-                        ${imageUrl 
+                        ${imageUrl
                             ? `<img class="packing-item-image" src="${imageUrl}" alt="${this.escapeHtml(garment.name)}" loading="lazy">`
                             : `<div class="packing-item-image" style="background-color: ${colorHex};"></div>`
                         }
                         <div class="packing-item-details">
                             <div class="packing-item-name">${this.escapeHtml(garment.name)}</div>
-                            <div class="packing-item-meta">${this.formatType(garment.type)} • ${this.escapeHtml(garment.color_name)} • ${this.formatPattern(garment.pattern)}</div>
+                            <div class="packing-item-meta">${formatType(garment.type)} • ${this.escapeHtml(garment.color_name)} • ${formatPattern(garment.pattern)}</div>
                         </div>
                         <div class="packing-item-versatility">
                             <div class="packing-versatility-bar">
@@ -638,15 +726,91 @@ class KioskUI {
                     </div>
                 `;
             });
-            
+
             html += '</div>';
         }
-        
+
         body.innerHTML = html;
     }
-    
+
+    // ========== WARDROBE MODAL ==========
+
+    async openWardrobeModal() {
+        this.openModal(this.elements.wardrobeModal);
+        await this.loadWardrobeModal();
+    }
+
+    async loadWardrobeModal() {
+        const grid = this.elements.wardrobeGrid;
+        if (!grid) return;
+
+        grid.innerHTML = `
+            <div class="grid-loading" style="grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; color: var(--text-muted);">
+                <div class="spinner" style="width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px;"></div>
+                <p>Loading wardrobe...</p>
+            </div>
+        `;
+
+        try {
+            const garments = await api.getGarments({ limit: 1000 });
+            if (Array.isArray(garments) && garments.length > 0) {
+                grid.innerHTML = garments.map(garment => this.createWardrobeCard(garment)).join('');
+            } else {
+                grid.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1 / -1;">
+                        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        <h3>No garments yet</h3>
+                        <p>Add garments from Settings to see them here.</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            grid.innerHTML = `
+                <div class="grid-error" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-muted);">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 16px; opacity: 0.5;">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                    </svg>
+                    <h3 style="margin-bottom: 8px; color: var(--text-secondary);">Error loading</h3>
+                    <p>${this.escapeHtml(error.message)}</p>
+                </div>
+            `;
+        }
+    }
+
+    createWardrobeCard(garment) {
+        const colorHex = garment.color_hex || '#666666';
+        const imageUrl = garment.raw_image_path
+            ? `/images/raw/${garment.raw_image_path.replace(/^.*[\\\/]/, '')}`
+            : garment.processed_image_path
+                ? `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\\/]/, '')}`
+                : null;
+
+        return `
+            <article class="wardrobe-item" data-garment-id="${garment.id}">
+                ${imageUrl
+                    ? `<img class="wardrobe-item-image" src="${imageUrl}" alt="${this.escapeHtml(garment.name)}" loading="lazy">`
+                    : `<div class="wardrobe-item-image" style="background-color: ${colorHex};"></div>`
+                }
+                <div class="wardrobe-item-info">
+                    <h4 class="wardrobe-item-name">${this.escapeHtml(garment.name)}</h4>
+                    <div class="wardrobe-item-meta">
+                        <span class="tag tag-type">${formatType(garment.type)}</span>
+                        <span class="tag tag-color" style="--tag-color: ${colorHex}">${this.escapeHtml(garment.color_name)}</span>
+                        <span class="tag">${formatPattern(garment.pattern)}</span>
+                        <span class="tag">${formatFormality(garment.formality)}</span>
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
     // ========== MODAL HELPERS ==========
-    
+
     openModal(modal) {
         if (!modal) return;
         modal.classList.remove('hidden');
@@ -654,155 +818,37 @@ class KioskUI {
         const focusable = modal.querySelector('button, input, select, textarea, [href]');
         if (focusable) focusable.focus();
     }
-    
+
     closeModal(modal) {
         if (!modal) return;
         modal.classList.add('hidden');
         document.body.style.overflow = '';
     }
-    
+
     // ========== UTILITIES ==========
-    
+
     formatOccasion(occasion) {
         const map = {
             casual: 'Casual',
-            work: 'Trabajo',
-            business: 'Negocios',
-            date: 'Cita',
-            party: 'Fiesta',
-            wedding: 'Boda',
+            work: 'Work',
+            business: 'Business',
+            date: 'Date',
+            party: 'Party',
+            wedding: 'Wedding',
             formal: 'Formal',
-            travel: 'Viaje'
+            travel: 'Travel'
         };
         return map[occasion] || occasion;
-    }
-    
-    formatType(type) {
-        const map = {
-            top: 'Top',
-            bottom: 'Pantalón',
-            dress: 'Vestido',
-            outerwear: 'Abrigo',
-            shoes: 'Zapatos',
-            accessory: 'Accesorio'
-        };
-        return map[type] || type;
-    }
-    
-    formatPattern(pattern) {
-        const map = {
-            solid: 'Liso',
-            striped: 'Rayado',
-            checked: 'Cuadros',
-            floral: 'Floral',
-            polka_dot: 'Lunares',
-            geometric: 'Geométrico',
-            abstract: 'Abstracto',
-            animal_print: 'Animal print',
-            paisley: 'Paisley',
-            houndstooth: 'Pata de gallo'
-        };
-        return map[pattern] || pattern;
-    }
-    
-    formatFormality(formality) {
-        const map = {
-            1: 'Casual',
-            2: 'Smart Casual',
-            3: 'Business Casual',
-            4: 'Formal',
-            5: 'Gala'
-        };
-        return map[formality] || `Nivel ${formality}`;
-    }
-    
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
-    showToast(message, type = 'info', duration = 4000) {
-        const container = document.getElementById('toastContainer') || this.createToastContainer();
-        
-        const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
-        toast.innerHTML = `
-            <svg class="toast-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                ${this.getToastIcon(type)}
-            </svg>
-            <span class="toast-message">${this.escapeHtml(message)}</span>
-            <button class="toast-close" aria-label="Cerrar">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            </button>
-        `;
-        
-        toast.querySelector('.toast-close').addEventListener('click', () => {
-            toast.style.animation = 'toastIn 0.3s ease reverse';
-            setTimeout(() => toast.remove(), 300);
-        });
-        
-        container.appendChild(toast);
-        
-        if (duration > 0) {
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    toast.style.animation = 'toastIn 0.3s ease reverse';
-                    setTimeout(() => toast.remove(), 300);
-                }
-            }, duration);
-        }
-    }
-    
-    createToastContainer() {
-        const container = document.createElement('div');
-        container.id = 'toastContainer';
-        container.className = 'toast-container';
-        container.setAttribute('aria-live', 'polite');
-        document.body.appendChild(container);
-        return container;
-    }
-    
-    getToastIcon(type) {
-        switch (type) {
-            case 'success':
-                return '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>';
-            case 'error':
-                return '<circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>';
-            case 'warning':
-                return '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>';
-            default:
-                return '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>';
-        }
-    }
-    
-    triggerHaptic(type = 'light') {
-        if (navigator.vibrate) {
-            const patterns = {
-                light: [10],
-                medium: [20],
-                heavy: [30],
-                success: [10, 50, 10],
-                error: [30, 30, 30]
-            };
-            navigator.vibrate(patterns[type] || patterns.light);
-        }
     }
 }
 
 // Initialize when DOM is ready
-let kioskUI;
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        kioskUI = new KioskUI();
-    });
-} else {
-    kioskUI = new KioskUI();
+export function initKioskUI() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            window.kioskUI = new KioskUI();
+        });
+    } else {
+        window.kioskUI = new KioskUI();
+    }
 }
-
-// Export for global access
-window.kioskUI = kioskUI;

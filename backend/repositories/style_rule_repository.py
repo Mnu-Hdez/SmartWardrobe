@@ -1,4 +1,3 @@
-
 import json
 
 from sqlmodel import Session, select
@@ -41,9 +40,7 @@ class StyleRuleRepository:
         return list(self.session.exec(statement).all())
 
     def get_by_type(self, rule_type: str) -> list[StyleRule]:
-        statement = select(StyleRule).where(
-            StyleRule.rule_type == rule_type, StyleRule.is_active
-        )
+        statement = select(StyleRule).where(StyleRule.rule_type == rule_type, StyleRule.is_active)
         return list(self.session.exec(statement).all())
 
     def update(self, rule_id: int, rule: StyleRuleUpdate) -> StyleRule | None:

@@ -4,173 +4,173 @@
         <!-- Visualization Panel (60% on dual, 100% on single) -->
         <div class="panel visualization-panel" id="visualizationPanel">
             <header class="panel-header">
-                <h1 class="panel-title">Visualización de Outfit</h1>
+                <h1 class="panel-title">Outfit Visualization</h1>
                 <div class="panel-controls">
-                    <button class="icon-btn" id="refreshBtn" aria-label="Generar nuevo outfit">
+                    <button class="icon-btn" id="refreshBtn" aria-label="Generate new outfit">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M23 4v6h-6"></path>
                             <path d="M1 20v-6h6"></path>
                             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                         </svg>
                     </button>
-                    <select class="icon-btn" id="occasionSelect" aria-label="Ocasión">
+                    <select class="icon-btn select" id="occasionSelect" aria-label="Occasion">
                         <option value="casual">Casual</option>
-                        <option value="work">Trabajo</option>
-                        <option value="party">Fiesta</option>
-                        <option value="date">Cita</option>
+                        <option value="work">Work</option>
+                        <option value="party">Party</option>
+                        <option value="date">Date</option>
                         <option value="formal">Formal</option>
-                        <option value="wedding">Boda</option>
+                        <option value="wedding">Wedding</option>
                     </select>
                 </div>
             </header>
-            
+
             <main class="visualization-content">
                 <div class="outfit-display" id="outfitDisplay">
                     <div class="outfit-loading" id="outfitLoading">
                         <div class="spinner"></div>
-                        <p>Generando recomendaciones...</p>
+                        <p>Generating recommendations...</p>
                     </div>
                 </div>
             </main>
         </div>
-        
+
         <!-- Touch Control Panel (40% on dual, slide-up on single) -->
         <div class="panel touch-panel" id="touchPanel">
             <header class="panel-header">
-                <h1 class="panel-title">Panel de Control</h1>
+                <h1 class="panel-title">Control Panel</h1>
             </header>
-            
+
             <main class="touch-content">
                 <!-- Occasion Presets -->
-                <section class="touch-section">
-                    <h2 class="section-title">Ocasión</h2>
+                <section class="touch-section reveal-on-scroll">
+                    <h2 class="section-title">Occasion</h2>
                     <div class="occasion-grid" id="occasionGrid">
                         <!-- Populated by kiosk.js -->
                     </div>
                 </section>
-                
+
                 <!-- Season Selector -->
-                <section class="touch-section">
-                    <h2 class="section-title">Temporada</h2>
+                <section class="touch-section reveal-on-scroll">
+                    <h2 class="section-title">Season</h2>
                     <div class="season-grid" id="seasonGrid">
                         <!-- Populated by kiosk.js -->
                     </div>
                 </section>
-                
+
                 <!-- Action Buttons -->
-                <section class="touch-section">
-                    <h2 class="section-title">Acciones</h2>
+                <section class="touch-section reveal-on-scroll">
+                    <h2 class="section-title">Actions</h2>
                     <div class="action-grid">
-                        <button class="action-btn touch-target primary" id="generateBtn" aria-label="Generar outfit">
+                        <button class="action-btn touch-target primary" id="generateBtn" aria-label="Generate outfit">
                             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
                                 <path d="M2 17l10 5 10-5"></path>
                                 <path d="M2 12l10 5 10-5"></path>
                             </svg>
-                            <span>Generar Outfit</span>
+                            <span>Generate Outfit</span>
                         </button>
-                        <button class="action-btn touch-target secondary" id="packingBtn" aria-label="Modo maleta">
+                        <button class="action-btn touch-target secondary" id="packingBtn" aria-label="Packing mode">
                             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
                                 <line x1="3" y1="6" x2="21" y2="6"></line>
                                 <path d="M16 10a4 4 0 0 1-8 0"></path>
                             </svg>
-                            <span>Modo Maleta</span>
+                            <span>Packing Mode</span>
                         </button>
-                        <button class="action-btn touch-target" id="wardrobeBtn" aria-label="Ver armario">
+                        <button class="action-btn touch-target" id="wardrobeBtn" aria-label="View wardrobe">
                             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                                 <circle cx="12" cy="7" r="4"></circle>
                             </svg>
-                            <span>Mi Armario</span>
+                            <span>My Wardrobe</span>
                         </button>
                     </div>
                 </section>
-                
+
                 <!-- Wardrobe Stats -->
-                <section class="touch-section">
-                    <h2 class="section-title">Estadísticas</h2>
+                <section class="touch-section reveal-on-scroll">
+                    <h2 class="section-title">Statistics</h2>
                     <div class="stats-grid" id="statsGrid">
                         <div class="stat-card">
                             <div class="stat-value" id="totalGarments">0</div>
-                            <div class="stat-label">Prendas totales</div>
+                            <div class="stat-label">Total Garments</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-value" id="totalOutfits">0</div>
-                            <div class="stat-label">Outfits creados</div>
+                            <div class="stat-label">Outfits Created</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-value" id="avgScore">0</div>
-                            <div class="stat-label">Score promedio</div>
+                            <div class="stat-label">Avg Score</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-value" id="favorites">0</div>
-                            <div class="stat-label">Favoritas</div>
+                            <div class="stat-label">Favorites</div>
                         </div>
                     </div>
                 </section>
             </main>
         </div>
     </div>
-    
-    <!-- Modals (referenced from index.html but can be used here too) -->
-    <div class="modal hidden" id="packingModal" role="dialog" aria-labelledby="packingTitle" aria-modal="true">
+
+    <!-- Modals -->
+    <dialog class="modal hidden" id="packingModal" role="dialog" aria-labelledby="packingTitle" aria-modal="true">
         <div class="modal-overlay"></div>
         <div class="modal-content">
             <header class="modal-header">
-                <h2 id="packingTitle">Modo Maleta</h2>
-                <button class="modal-close" id="closePackingModal" aria-label="Cerrar">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <h2 id="packingTitle">Packing Mode</h2>
+                <button class="modal-close" id="closePackingModal" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
                 </button>
             </header>
             <div class="modal-body">
-                <form id="packingForm">
-                    <div class="form-group">
-                        <label for="packingDays">Días de viaje</label>
-                        <input type="number" id="packingDays" min="1" max="30" value="3" required>
+                <form id="packingForm" class="modal-form">
+                    <div class="form-field">
+                        <label for="packingDays">Trip Days</label>
+                        <input type="number" id="packingDays" name="packingDays" min="1" max="30" value="3" required class="input">
                     </div>
-                    <div class="form-group">
-                        <label for="packingOccasion">Ocasión principal</label>
-                        <select id="packingOccasion">
-                            <option value="travel">Viaje</option>
-                            <option value="business">Negocios</option>
+                    <div class="form-field">
+                        <label for="packingOccasion">Main Occasion</label>
+                        <select id="packingOccasion" name="packingOccasion" class="select">
+                            <option value="travel">Travel</option>
+                            <option value="business">Business</option>
                             <option value="casual">Casual</option>
                             <option value="formal">Formal</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="packingSeason">Temporada</label>
-                        <select id="packingSeason">
-                            <option value="all_season">Todas</option>
-                            <option value="spring">Primavera</option>
-                            <option value="summer">Verano</option>
-                            <option value="autumn">Otoño</option>
-                            <option value="winter">Invierno</option>
+                    <div class="form-field">
+                        <label for="packingSeason">Season</label>
+                        <select id="packingSeason" name="packingSeason" class="select">
+                            <option value="all_season">All Season</option>
+                            <option value="spring">Spring</option>
+                            <option value="summer">Summer</option>
+                            <option value="autumn">Autumn</option>
+                            <option value="winter">Winter</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="packingMaxItems">Máximo de prendas</label>
-                        <input type="number" id="packingMaxItems" min="5" max="30" value="15" required>
+                    <div class="form-field">
+                        <label for="packingMaxItems">Max Items</label>
+                        <input type="number" id="packingMaxItems" name="packingMaxItems" min="5" max="30" value="15" required class="input">
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" id="cancelPacking">Cancelar</button>
-                        <button type="submit" class="btn btn-primary">Generar Plan</button>
+                        <button type="button" class="btn btn-secondary" id="cancelPacking" data-modal-cancel>Cancel</button>
+                        <button type="submit" class="btn btn-primary">Generate Plan</button>
                     </div>
                 </form>
             </div>
         </div>
-    </div>
-    
-    <div class="modal hidden" id="packingResultModal" role="dialog" aria-labelledby="packingResultTitle" aria-modal="true">
+    </dialog>
+
+    <dialog class="modal hidden" id="packingResultModal" role="dialog" aria-labelledby="packingResultTitle" aria-modal="true">
         <div class="modal-overlay"></div>
         <div class="modal-content large">
             <header class="modal-header">
-                <h2 id="packingResultTitle">Plan de Maleta</h2>
-                <button class="modal-close" id="closePackingResultModal" aria-label="Cerrar">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <h2 id="packingResultTitle">Packing Plan</h2>
+                <button class="modal-close" id="closePackingResultModal" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
@@ -180,4 +180,23 @@
                 <!-- Packing result will be inserted here -->
             </div>
         </div>
-    </div>
+    </dialog>
+
+    <dialog class="modal hidden" id="wardrobeModal" role="dialog" aria-labelledby="wardrobeTitle" aria-modal="true">
+        <div class="modal-overlay"></div>
+        <div class="modal-content large">
+            <header class="modal-header">
+                <h2 id="wardrobeTitle">My Wardrobe</h2>
+                <button class="modal-close" id="closeWardrobeModal" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </header>
+            <div class="modal-body">
+                <div class="garments-grid wardrobe-grid" id="wardrobeGrid" role="list" aria-label="Wardrobe garments"></div>
+            </div>
+        </div>
+    </dialog>
+</div>

@@ -1,5 +1,4 @@
-
-from backend.ai_providers import AIProvider
+from backend.ai_providers import AIProviderProtocol
 from backend.ai_providers.local import LocalRulesProvider
 from backend.ai_providers.nim import NVIDIANIMProvider
 from backend.core.config import get_settings
@@ -8,11 +7,11 @@ from backend.core.config import get_settings
 class AIProviderFactory:
     """Factory for creating AI provider instances."""
 
-    _instance: AIProvider | None = None
+    _instance: AIProviderProtocol | None = None
     _provider_name: str | None = None
 
     @classmethod
-    def get_provider(cls, provider_name: str | None = None) -> AIProvider:
+    def get_provider(cls, provider_name: str | None = None) -> AIProviderProtocol:
         """Get or create an AI provider instance."""
         settings = get_settings()
 
@@ -34,13 +33,13 @@ class AIProviderFactory:
         return provider
 
     @classmethod
-    async def get_available_provider(cls) -> AIProvider:
+    async def get_available_provider(cls) -> AIProviderProtocol:
         """Get the best available provider, falling back to local."""
         settings = get_settings()
 
         if settings.ai_provider == "nim":
             nim_provider = NVIDIANIMProvider()
-            if await nim_provider.is_available():
+            if await nim_provider.health_check():
                 cls._instance = nim_provider
                 cls._provider_name = "nim"
                 return nim_provider

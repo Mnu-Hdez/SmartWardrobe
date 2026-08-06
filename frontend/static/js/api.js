@@ -3,7 +3,7 @@
 
 const API_CONFIG = {
     // Base URL will be set dynamically from environment or detected
-    baseUrl: window.SMART_WARDROBE_API_URL || '/api/v1',
+    baseUrl: window.SMART_WARDROBE_API_URL || '',
     
     // Timeout for requests (ms)
     timeout: 30000,
@@ -170,7 +170,7 @@ class ApiClient {
     // ========== RECOMMENDATIONS ==========
     
     async recommendOutfits(request) {
-        return this.request('/recommend', {
+        return this.request('/recommend/outfits', {
             method: 'POST',
             body: JSON.stringify(request)
         });

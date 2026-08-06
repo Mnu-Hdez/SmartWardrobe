@@ -3,7 +3,7 @@
 # Used by systemd or autostart to launch Chromium in kiosk mode
 
 # Wait for network and backend to be ready
-until curl -sf http://localhost:8000/health > /dev/null; do
+until curl -sf http://localhost:7000/health > /dev/null; do
     sleep 2
 done
 
@@ -30,4 +30,4 @@ exec chromium-browser \
     --hide-scrollbars \
     --force-device-scale-factor=1 \
     --start-fullscreen \
-    http://localhost:8000
+    http://localhost:7000"
