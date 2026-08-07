@@ -10,6 +10,7 @@ from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
     OutfitRecommendationRequest,
     PackingPlanRequest,
+    UserFeedbackCreate,
 )
 from backend.repositories.garment_repo import (
     GarmentRepository,
@@ -17,6 +18,11 @@ from backend.repositories.garment_repo import (
     OutfitRepository,
     StyleRuleRepository,
 )
+from backend.repositories.user_feedback_repository import UserFeedbackRepository
+
+
+def _like_or_dislike(rating: int) -> str:
+    return "like" if rating > 0 else "dislike"
 
 
 class OutfitService:
@@ -27,6 +33,7 @@ class OutfitService:
         self.outfit_repo = OutfitRepository(session)
         self.item_repo = OutfitItemRepository(session)
         self.rule_repo = StyleRuleRepository(session)
+        self.feedback_repo = UserFeedbackRepository(session)
 
     # ========== OUTFIT RECOMMENDATIONS ==========
 
@@ -343,12 +350,20 @@ class OutfitService:
 
     # ========== FEEDBACK ==========
 
-    def rate_outfit(self, outfit_id: int, rating: int, feedback_type: str) -> bool:
-        """Record user feedback on outfit"""
-        # In a real implementation, this would save to a feedback table
-        # For now, just acknowledge
+    def rate_outfit(self, outfit_id: int, rating: int) -> bool:
+        """Record user feedback on outfit. rating: -1 dislike, 1 like."""
+        if not self.outfit_repo.get_by_id(outfit_id):
+            return False
+        self.feedback_repo.create(
+            UserFeedbackCreate(outfit_id=outfit_id, rating=rating, feedback_type=_like_or_dislike(rating))
+        )
         return True
 
-    def rate_garment(self, garment_id: int, rating: int, feedback_type: str) -> bool:
-        """Record user feedback on garment"""
+    def rate_garment(self, garment_id: int, rating: int) -> bool:
+        """Record user feedback on garment. rating: -1 dislike, 1 like."""
+        if not self.garment_repo.get_by_id(garment_id):
+            return False
+        self.feedback_repo.create(
+            UserFeedbackCreate(garment_id=garment_id, rating=rating, feedback_type=_like_or_dislike(rating))
+        )
         return True

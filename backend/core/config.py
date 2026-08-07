@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["*"])
 
+    # Auth - shared secret required on write endpoints (POST/PATCH/DELETE).
+    # Empty by default so local dev keeps working; set a real value in .env for
+    # any deployment reachable outside localhost (kiosk on LAN still fine).
+    API_KEY: str = ""
+
+    # Uploads
+    MAX_UPLOAD_SIZE_MB: int = 10
+
     # AI Provider
     AI_PROVIDER: str = "local"
     NIM_API_KEY: str = ""

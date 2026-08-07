@@ -22,7 +22,7 @@ services:
     volumes:
       - app_data:/app/data
     ports:
-      - "127.0.0.1:7000:7000"
+      - "7000:7000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7000/health"]
       interval: 30s
