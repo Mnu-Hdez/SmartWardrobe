@@ -70,17 +70,17 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     DEVICE=cpu \
     API_SERVER_IP=0.0.0.0 \
-    API_PORT=7000
+    API_PORT=8100
 
 # Expose port
-EXPOSE 7000
+EXPOSE 8100
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:7000/health || exit 1
+    CMD curl -f http://localhost:8100/health || exit 1
 
 # Use tini as entrypoint for proper signal handling
 ENTRYPOINT ["tini", "--"]
 
 # Run the application
-CMD ["python", "-m", "uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "7000"]
+CMD ["python", "-m", "uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8100"]

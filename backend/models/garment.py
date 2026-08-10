@@ -4,7 +4,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
 
@@ -54,6 +54,7 @@ class Garment(SQLModel, table=True):
     color_hex: str = Field(sa_column=Column(String(7), nullable=False))  # #RRGGBB
     pattern: str = Field(default=Pattern.SOLID, sa_column=Column(String(50), nullable=False))
     formality: int = Field(default=1, sa_column=Column(Integer, nullable=False))  # 1-5
+    tags: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
 
     # Dual image storage paths
     raw_image_path: str = Field(sa_column=Column(String(500), nullable=False))
@@ -131,7 +132,7 @@ class StyleRule(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(sa_column=Column(String(200), nullable=False))
     rule_type: str = Field(sa_column=Column(String(50), nullable=False))
-    parameters: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    parameters: str = Field(sa_column=Column(Text, nullable=False))  # JSON string
     weight: float = Field(default=1.0, sa_column=Column(Integer, nullable=False))
     is_active: bool = Field(default=True, sa_column=Column(Integer, nullable=False))
     created_at: datetime = Field(

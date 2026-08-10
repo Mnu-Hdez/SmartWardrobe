@@ -9,10 +9,10 @@ from sqlmodel import Session
 
 from backend.core.auth import require_api_key
 from backend.core.config import settings
+from backend.ai_providers.factory import AIProviderFactory
 from backend.database.connection import get_session
 from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
-    BulkDeleteRequest,
     FeedbackRequest,
     FeedbackResponse,
     GarmentCreate,
@@ -32,6 +32,8 @@ from backend.models.schemas import (
     StyleRuleListResponse,
     StyleRuleResponse,
     StyleRuleUpdate,
+    TagSuggestionRequest,
+    TagSuggestionResponse,
 )
 from backend.repositories.garment_repo import (
     GarmentRepository,
@@ -96,6 +98,7 @@ async def create_garment(
     color_hex: str = Form(...),
     pattern: str = Form(...),
     formality: int = Form(...),
+    tags: str | None = Form(None),
     garmentImage: UploadFile = File(...),
     session: Session = Depends(get_session),
 ):
@@ -139,6 +142,19 @@ async def create_garment(
     processed_path = settings.IMAGES_PROCESSED_GARMENTS_DIR / processed_filename
     shutil.copy2(raw_path, processed_path)
 
+    # Tags arrive as a JSON-encoded array string via multipart form (arrays
+    # aren't natively supported in multipart/form-data), e.g. '["denim","casual"]'
+    parsed_tags: list[str] = []
+    if tags:
+        import json
+
+        try:
+            loaded = json.loads(tags)
+            if isinstance(loaded, list):
+                parsed_tags = [str(t).strip().lower() for t in loaded if str(t).strip()]
+        except json.JSONDecodeError:
+            parsed_tags = [t.strip().lower() for t in tags.split(",") if t.strip()]
+
     # Create garment record
     garment_data = GarmentCreate(
         name=name,
@@ -151,6 +167,7 @@ async def create_garment(
         color_hex=color_hex,
         pattern=pattern,
         formality=formality,
+        tags=parsed_tags,
     )
 
     garment = Garment(
@@ -163,6 +180,25 @@ async def create_garment(
     created = repo.create(garment)
 
     return GarmentResponse.model_validate(created)
+
+
+@router.post("/suggest-tags", response_model=TagSuggestionResponse)
+async def suggest_garment_tags(request: TagSuggestionRequest):
+    """Ask the configured AI provider (NIM, falling back to local) for tag
+    suggestions. Read-only / side-effect-free - the user must still accept,
+    edit, or reject each suggestion before it's saved on the garment."""
+    provider = AIProviderFactory.get_provider()
+    suggested = provider.suggest_tags(
+        name=request.name,
+        garment_type=request.type,
+        color_name=request.color_name,
+        material=request.material,
+        pattern=request.pattern,
+        brand=request.brand,
+        season=request.season,
+        existing_tags=request.existing_tags,
+    )
+    return TagSuggestionResponse(suggested_tags=suggested, provider=provider.name)
 
 
 @router.get("/{garment_id}", response_model=GarmentResponse)
@@ -202,7 +238,7 @@ async def bulk_delete_garments(ids: list[int], session: Session = Depends(get_se
     if len(ids) > 500:
         raise HTTPException(status_code=400, detail="Cannot delete more than 500 garments at once")
     repo = GarmentRepository(session)
-    deleted = repo.bulk_delete(request.ids)
+    deleted = repo.bulk_delete(ids)
     return {"deleted": deleted}
 
 
@@ -368,11 +404,13 @@ async def list_rules(active_only: bool = Query(True), session: Session = Depends
 @rules_router.post("", response_model=StyleRuleResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_api_key)])
 async def create_rule(rule_data: StyleRuleCreate, session: Session = Depends(get_session)):
     """Create a style rule"""
+    import json
+
     repo = StyleRuleRepository(session)
     rule = StyleRule(
         name=rule_data.name,
         rule_type=rule_data.rule_type,
-        parameters=rule_data.parameters,
+        parameters=json.dumps(rule_data.parameters),
         weight=rule_data.weight,
         is_active=rule_data.is_active,
     )
@@ -395,9 +433,13 @@ async def update_rule(
     rule_id: int, rule_update: StyleRuleUpdate, session: Session = Depends(get_session)
 ):
     """Update a style rule"""
+    import json
+
     repo = StyleRuleRepository(session)
 
     update_data = rule_update.model_dump(exclude_unset=True)
+    if "parameters" in update_data:
+        update_data["parameters"] = json.dumps(update_data["parameters"])
 
     # Convert to StyleRuleUpdate for repo
     rule = repo.update(rule_id, StyleRuleUpdate(**update_data))

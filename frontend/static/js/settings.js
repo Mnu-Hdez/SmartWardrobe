@@ -24,7 +24,9 @@ class SettingsUI {
                 type: '',
                 season: ''
             },
-            isLoading: false
+            isLoading: false,
+            currentTags: [],
+            suggestedTags: []
         };
 
         this.elements = {};
@@ -61,6 +63,18 @@ class SettingsUI {
         this.elements.imagePreview = document.getElementById('imagePreview');
         this.elements.previewImage = document.getElementById('previewImage');
         this.elements.removeImage = document.getElementById('removeImage');
+
+        // Style & Tags fields
+        this.elements.garmentColorName = document.getElementById('garmentColorName');
+        this.elements.garmentColorHex = document.getElementById('garmentColorHex');
+        this.elements.garmentPattern = document.getElementById('garmentPattern');
+        this.elements.garmentFormality = document.getElementById('garmentFormality');
+        this.elements.garmentTagInput = document.getElementById('garmentTagInput');
+        this.elements.currentTagsList = document.getElementById('currentTagsList');
+        this.elements.suggestTagsBtn = document.getElementById('suggestTagsBtn');
+        this.elements.suggestedTagsList = document.getElementById('suggestedTagsList');
+        this.elements.suggestedTagsChips = document.getElementById('suggestedTagsChips');
+        this.elements.garmentTagsHidden = document.getElementById('garmentTagsHidden');
 
         // System status
         this.elements.aiProviderStatus = document.getElementById('aiProviderStatus');
@@ -120,6 +134,31 @@ class SettingsUI {
         // Remove image
         if (this.elements.removeImage) {
             this.elements.removeImage.addEventListener('click', () => this.clearImagePreview());
+        }
+
+        // Tags
+        if (this.elements.garmentTagInput) {
+            this.elements.garmentTagInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const value = this.elements.garmentTagInput.value.trim();
+                    if (value) {
+                        this.addTag(value);
+                        this.elements.garmentTagInput.value = '';
+                    }
+                }
+            });
+        }
+        if (this.elements.suggestTagsBtn) {
+            this.elements.suggestTagsBtn.addEventListener('click', () => this.suggestTagsWithAI());
+        }
+
+        // Bulk actions
+        if (this.elements.selectAllCheckbox) {
+            this.elements.selectAllCheckbox.addEventListener('change', (e) => this.toggleSelectAll(e.target.checked));
+        }
+        if (this.elements.bulkDeleteBtn) {
+            this.elements.bulkDeleteBtn.addEventListener('click', () => this.confirmBulkDelete());
         }
 
         // Add garment form
@@ -187,8 +226,8 @@ class SettingsUI {
         this.showGridLoading();
 
         try {
-            const response = await api.getGarments({ limit: 1000 });
-            this.state.garments = response.garments || [];
+            const garments = await api.getGarments({ limit: 1000 });
+            this.state.garments = Array.isArray(garments) ? garments : [];
             this.applyFilters();
         } catch (error) {
             console.error('Error loading garments:', error);
@@ -426,6 +465,14 @@ class SettingsUI {
         if (form.garmentSeason) form.garmentSeason.value = garment.season || 'all_season';
         if (form.garmentSize) form.garmentSize.value = garment.size || '';
         if (form.garmentMaterial) form.garmentMaterial.value = garment.material || '';
+        if (form.garmentColorName) form.garmentColorName.value = garment.color_name || '';
+        if (form.garmentColorHex) form.garmentColorHex.value = garment.color_hex || '#4a4a4a';
+        if (form.garmentPattern) form.garmentPattern.value = garment.pattern || 'solid';
+        if (form.garmentFormality) form.garmentFormality.value = garment.formality || 1;
+
+        this.state.currentTags = Array.isArray(garment.tags) ? [...garment.tags] : [];
+        this.state.suggestedTags = [];
+        this.renderTags();
 
         // Clear image preview
         this.clearImagePreview();
@@ -466,12 +513,18 @@ class SettingsUI {
                     type: formData.get('garmentType'),
                     season: formData.get('garmentSeason'),
                     size: formData.get('garmentSize') || undefined,
-                    material: formData.get('garmentMaterial') || undefined
+                    material: formData.get('garmentMaterial') || undefined,
+                    color_name: formData.get('garmentColorName') || undefined,
+                    color_hex: formData.get('garmentColorHex') || undefined,
+                    pattern: formData.get('garmentPattern') || undefined,
+                    formality: formData.get('garmentFormality') ? parseInt(formData.get('garmentFormality'), 10) : undefined,
+                    tags: this.state.currentTags
                 };
 
                 await api.updateGarment(parseInt(editId), garmentData);
                 showToast('Garment updated', 'success');
             } else {
+                formData.set('tags', JSON.stringify(this.state.currentTags));
                 await api.createGarment(formData);
                 showToast('Garment saved successfully', 'success');
             }
@@ -502,6 +555,9 @@ class SettingsUI {
             const btnText = form.querySelector('.btn-text');
             if (btnText) btnText.textContent = 'Save Garment';
         }
+        this.state.currentTags = [];
+        this.state.suggestedTags = [];
+        this.renderTags();
         this.clearImagePreview();
         this.openModal(this.elements.addGarmentModal);
     }
@@ -553,7 +609,105 @@ class SettingsUI {
         if (uploadZone) uploadZone.classList.remove('drag-active');
     }
 
+    // ========== TAGS ==========
+
+    addTag(tag) {
+        tag = tag.trim().toLowerCase();
+        if (!tag || this.state.currentTags.includes(tag)) return;
+        this.state.currentTags.push(tag);
+        this.state.suggestedTags = this.state.suggestedTags.filter(t => t !== tag);
+        this.renderTags();
+    }
+
+    removeTag(tag) {
+        this.state.currentTags = this.state.currentTags.filter(t => t !== tag);
+        this.renderTags();
+    }
+
+    dismissSuggestedTag(tag) {
+        this.state.suggestedTags = this.state.suggestedTags.filter(t => t !== tag);
+        this.renderTags();
+    }
+
+    renderTags() {
+        const list = this.elements.currentTagsList;
+        if (list) {
+            list.innerHTML = this.state.currentTags.map(tag => `
+                <span class="tag-chip">
+                    ${escapeHtml(tag)}
+                    <button type="button" class="tag-chip-remove" data-tag="${escapeHtml(tag)}" aria-label="Remove tag ${escapeHtml(tag)}">&times;</button>
+                </span>
+            `).join('');
+            list.querySelectorAll('.tag-chip-remove').forEach(btn => {
+                btn.addEventListener('click', () => this.removeTag(btn.dataset.tag));
+            });
+        }
+
+        const suggList = this.elements.suggestedTagsList;
+        const suggChips = this.elements.suggestedTagsChips;
+        if (suggList && suggChips) {
+            if (this.state.suggestedTags.length === 0) {
+                suggList.hidden = true;
+            } else {
+                suggList.hidden = false;
+                suggChips.innerHTML = this.state.suggestedTags.map(tag => `
+                    <span class="tag-chip tag-chip-suggested">
+                        <button type="button" class="tag-chip-accept" data-tag="${escapeHtml(tag)}">+ ${escapeHtml(tag)}</button>
+                        <button type="button" class="tag-chip-dismiss" data-tag="${escapeHtml(tag)}" aria-label="Dismiss ${escapeHtml(tag)}">&times;</button>
+                    </span>
+                `).join('');
+                suggChips.querySelectorAll('.tag-chip-accept').forEach(btn => {
+                    btn.addEventListener('click', () => this.addTag(btn.dataset.tag));
+                });
+                suggChips.querySelectorAll('.tag-chip-dismiss').forEach(btn => {
+                    btn.addEventListener('click', () => this.dismissSuggestedTag(btn.dataset.tag));
+                });
+            }
+        }
+
+        if (this.elements.garmentTagsHidden) {
+            this.elements.garmentTagsHidden.value = JSON.stringify(this.state.currentTags);
+        }
+    }
+
     // ========== SYSTEM CONFIGURATION ==========
+
+    async suggestTagsWithAI() {
+        const form = this.elements.addGarmentForm;
+        const name = form.garmentName?.value?.trim();
+        const type = form.garmentType?.value;
+
+        if (!name || !type) {
+            showToast('Add a name and type first', 'warning');
+            return;
+        }
+
+        const btn = this.elements.suggestTagsBtn;
+        if (btn) btn.disabled = true;
+
+        try {
+            const result = await api.suggestTags({
+                name,
+                type,
+                color_name: form.garmentColorName?.value || null,
+                material: form.garmentMaterial?.value || null,
+                pattern: form.garmentPattern?.value || null,
+                brand: form.garmentBrand?.value || null,
+                season: form.garmentSeason?.value || null,
+                existing_tags: this.state.currentTags
+            });
+            const newOnes = (result.suggested_tags || []).filter(t => !this.state.currentTags.includes(t));
+            this.state.suggestedTags = [...new Set([...this.state.suggestedTags, ...newOnes])];
+            this.renderTags();
+            if (newOnes.length === 0) {
+                showToast('No new tag suggestions', 'info');
+            }
+        } catch (error) {
+            showToast(`Error: ${error.message}`, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
 
     async loadSystemStatus() {
         try {

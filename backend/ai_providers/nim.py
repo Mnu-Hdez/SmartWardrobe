@@ -69,6 +69,73 @@ class NVIDIANIMProvider:
 
             return LocalRulesProvider().create_packing_plan(request, garments)
 
+    def suggest_tags(
+        self,
+        name: str,
+        garment_type: str,
+        color_name: str | None = None,
+        material: str | None = None,
+        pattern: str | None = None,
+        brand: str | None = None,
+        season: str | None = None,
+        existing_tags: list[str] | None = None,
+    ) -> list[str]:
+        """Ask NIM to suggest tags for a garment based on its metadata.
+        Falls back to the local heuristic provider if NIM is unavailable
+        or the response can't be parsed - suggestions are non-critical,
+        so a broken NIM call should never block adding a garment."""
+        from backend.ai_providers.local import LocalRulesProvider
+
+        def fallback() -> list[str]:
+            return LocalRulesProvider().suggest_tags(
+                name, garment_type, color_name, material, pattern, brand, season, existing_tags
+            )
+
+        if not self.api_key:
+            logger.warning("NIM API key not configured, falling back to local tag suggestions")
+            return fallback()
+
+        details = [f"name: {name}", f"type: {garment_type}"]
+        if color_name:
+            details.append(f"color: {color_name}")
+        if material:
+            details.append(f"material: {material}")
+        if pattern:
+            details.append(f"pattern: {pattern}")
+        if brand:
+            details.append(f"brand: {brand}")
+        if season:
+            details.append(f"season: {season}")
+        if existing_tags:
+            details.append(f"tags already applied (do not repeat these): {', '.join(existing_tags)}")
+
+        prompt = (
+            "Suggest up to 6 short, lowercase, single/double-word tags for this garment, "
+            "useful for search and outfit matching (style, vibe, fabric feel, use-case, etc). "
+            "Do not repeat the type or color verbatim unless genuinely useful. "
+            "Respond ONLY with a JSON array of strings, nothing else.\n\n"
+            + "\n".join(details)
+        )
+
+        try:
+            response = self._call_nim(prompt)
+            content = response["choices"][0]["message"]["content"]
+            import json
+
+            tags = json.loads(content)
+            if not isinstance(tags, list):
+                raise ValueError("NIM tag response was not a list")
+            cleaned = []
+            existing_lower = {t.lower() for t in (existing_tags or [])}
+            for t in tags:
+                t = str(t).strip().lower()
+                if t and t not in existing_lower and t not in cleaned:
+                    cleaned.append(t)
+            return cleaned[:6] if cleaned else fallback()
+        except Exception as e:
+            logger.error(f"NIM tag suggestion failed: {e}, falling back to local")
+            return fallback()
+
     def _prepare_garment_context(self, garments: list[Garment]) -> str:
         """Prepare garment list as context for LLM"""
         lines = []

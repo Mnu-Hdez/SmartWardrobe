@@ -214,6 +214,53 @@ class LocalRulesProvider:
             score += 0.2
         return min(1.0, score)
 
+    def suggest_tags(
+        self,
+        name: str,
+        garment_type: str,
+        color_name: str | None = None,
+        material: str | None = None,
+        pattern: str | None = None,
+        brand: str | None = None,
+        season: str | None = None,
+        existing_tags: list[str] | None = None,
+    ) -> list[str]:
+        """Heuristic tag suggestions used when NIM is unavailable or as its fallback."""
+        existing = {t.lower() for t in (existing_tags or [])}
+        suggestions: list[str] = []
+
+        def add(tag: str):
+            tag = tag.strip().lower()
+            if tag and tag not in existing and tag not in suggestions:
+                suggestions.append(tag)
+
+        if color_name:
+            add(color_name)
+        if material:
+            add(material)
+        if garment_type:
+            add(garment_type)
+        if pattern and pattern != "solid":
+            add(pattern)
+        if season and season != "all_season":
+            add(season)
+        if brand:
+            add(brand)
+
+        neutral_colors = {"black", "white", "gray", "grey", "navy", "beige", "khaki"}
+        if color_name and color_name.lower() in neutral_colors:
+            add("versatile")
+            add("neutral")
+
+        casual_materials = {"denim", "cotton"}
+        formal_materials = {"silk", "wool", "cashmere"}
+        if material and material.lower() in casual_materials:
+            add("casual")
+        if material and material.lower() in formal_materials:
+            add("smart")
+
+        return suggestions[:8]
+
     def _select_daily_outfit(self, garments: list[Garment], occasion: str) -> list[Garment]:
         import random
 
