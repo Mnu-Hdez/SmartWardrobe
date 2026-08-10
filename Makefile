@@ -119,7 +119,7 @@ docker-build:
 	docker compose build
 
 docker-dev:
-	docker compose --profile dev up --build
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile dev up --build
 
 docker-prod:
 	docker compose --profile prod up --build -d

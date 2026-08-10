@@ -1,0 +1,29 @@
+# Smart Wardrobe - Dev overlay (hot-reload)
+#
+# Se aplica ENCIMA de docker-compose.yml, nunca solo.
+# NO se carga automaticamente (no se llama docker-compose.override.yml
+# a proposito) para que no pueda colarse jamas en un --profile prod.
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile dev up -d
+#   (o: make docker-dev, ver Makefile actualizado)
+
+services:
+  app:
+    volumes:
+      - ./backend:/app/backend:ro
+      - ./frontend:/app/frontend:ro
+    command:
+      - python
+      - -m
+      - uvicorn
+      - backend.api.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8100"
+      - --reload
+      - --reload-dir
+      - /app/backend
+      - --reload-dir
+      - /app/frontend
