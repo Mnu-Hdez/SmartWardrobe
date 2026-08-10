@@ -16,7 +16,7 @@ class AIProviderFactory:
         settings = get_settings()
 
         # Determine provider name
-        name = provider_name or settings.ai_provider
+        name = provider_name or settings.AI_PROVIDER
 
         # Return cached instance if same provider
         if cls._instance is not None and cls._provider_name == name:
@@ -37,7 +37,7 @@ class AIProviderFactory:
         """Get the best available provider, falling back to local."""
         settings = get_settings()
 
-        if settings.ai_provider == "nim":
+        if settings.AI_PROVIDER == "nim":
             nim_provider = NVIDIANIMProvider()
             if await nim_provider.health_check():
                 cls._instance = nim_provider

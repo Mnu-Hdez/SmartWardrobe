@@ -94,8 +94,23 @@ html {
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {
-    animation: none !important;
-    transition: none !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .modal-overlay { background: rgba(0, 0, 0, 0.92); backdrop-filter: none; }
+  .item-action-btn { background: var(--surface-elevated); backdrop-filter: none; }
+  .preview-remove { background: rgba(0, 0, 0, 0.92); backdrop-filter: none; }
+}
+
+@media (prefers-contrast: more) {
+  :root { --border: var(--border-soft); }
+  .btn, .input, .select, .card, .wardrobe-item, .garment-card, .tag, .tag-chip {
+    border-width: 2px;
   }
 }
 
@@ -175,6 +190,24 @@ h1, h2, h3, h4, .eyebrow, .stat-value {
   width: 28px;
   height: 1px;
   background: linear-gradient(90deg, var(--accent), transparent);
+}
+
+/* Response — pointer-down feedback for every pressable control (critical for touch kiosk) */
+.icon-btn:active,
+.occasion-btn:active,
+.season-btn:active,
+.action-btn:active,
+.feedback-btn:active,
+.item-action-btn:active,
+.modal-close:active,
+.toast-close:active,
+.tag-chip-remove:active,
+.tag-chip-dismiss:active,
+.tag-chip-accept:active,
+.preview-remove:active,
+.upload-zone:active {
+  transform: scale(0.94);
+  transition-duration: var(--dur-fast);
 }
 
 /* ============================================
@@ -730,6 +763,7 @@ h1, h2, h3, h4, .eyebrow, .stat-value {
   border-radius: var(--radius-full);
   color: var(--text-secondary);
   cursor: pointer;
+  text-decoration: none;
   transition: all var(--dur-fast) var(--ease-out);
 }
 .icon-btn:hover { background: var(--border); color: var(--text-primary); }
@@ -1067,6 +1101,19 @@ h1, h2, h3, h4, .eyebrow, .stat-value {
 .settings-header {
   margin-bottom: 32px;
 }
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  margin-bottom: 16px;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.back-link:hover { color: var(--accent); }
+.back-link:active { transform: scale(0.98); }
 .settings-header h1 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
 .settings-subtitle { color: var(--text-muted); font-size: 16px; }
 
@@ -1210,3 +1257,23 @@ h1, h2, h3, h4, .eyebrow, .stat-value {
   .packing-item-versatility { display: none; }
   .outfit-garments { grid-template-columns: 1fr; }
 }
+
+/* Tags */
+.tags-input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.tags-input-row .input { flex: 1; }
+.tags-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: var(--radius-full);
+  background: var(--surface-overlay); border: 1px solid var(--border);
+  font-size: 13px; color: var(--text-secondary);
+}
+.tag-chip-remove, .tag-chip-dismiss {
+  background: none; border: none; cursor: pointer; color: var(--text-muted);
+  font-size: 15px; line-height: 1; padding: 0;
+}
+.tag-chip-remove:hover, .tag-chip-dismiss:hover { color: var(--accent); }
+.tags-suggestions { margin-top: 12px; }
+.suggestions-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.tag-chip-suggested { background: var(--accent-subtle); border-color: var(--accent); }
+.tag-chip-accept { background: none; border: none; cursor: pointer; color: var(--accent); font-size: 13px; padding: 0; }

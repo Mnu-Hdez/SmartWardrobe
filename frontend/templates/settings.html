@@ -9,6 +9,13 @@
 <body>
   <main class="settings-page">
     <header class="settings-header">
+      <a href="#/kiosk" class="back-link" aria-label="Back to kiosk">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        <span>Back to Kiosk</span>
+      </a>
       <h1>Wardrobe Settings</h1>
       <p class="settings-subtitle">Manage your garments and preferences</p>
     </header>
@@ -223,6 +230,72 @@
               </datalist>
             </div>
           </div>
+        </fieldset>
+
+        <!-- Color, Pattern & Formality Fields -->
+        <fieldset class="form-fieldset">
+          <legend class="fieldset-legend">Style</legend>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="garmentColorName">Color name <span class="required" aria-hidden="true">*</span></label>
+              <input type="text" id="garmentColorName" name="garmentColorName" required maxlength="50" placeholder="e.g., Navy Blue" autocomplete="off" aria-describedby="colorNameError" class="input">
+              <div class="field-error" id="colorNameError" aria-live="polite" hidden></div>
+            </div>
+            <div class="form-field">
+              <label for="garmentColorHex">Color <span class="required" aria-hidden="true">*</span></label>
+              <input type="color" id="garmentColorHex" name="garmentColorHex" required value="#4a4a4a" aria-describedby="colorHexError" class="input input-color">
+              <div class="field-error" id="colorHexError" aria-live="polite" hidden></div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="garmentPattern">Pattern <span class="required" aria-hidden="true">*</span></label>
+              <select id="garmentPattern" name="garmentPattern" required aria-describedby="patternError" class="select">
+                <option value="solid" selected>Solid</option>
+                <option value="striped">Striped</option>
+                <option value="checked">Checked</option>
+                <option value="floral">Floral</option>
+                <option value="polka_dot">Polka Dot</option>
+                <option value="geometric">Geometric</option>
+                <option value="abstract">Abstract</option>
+                <option value="animal_print">Animal Print</option>
+                <option value="paisley">Paisley</option>
+                <option value="houndstooth">Houndstooth</option>
+              </select>
+              <div class="field-error" id="patternError" aria-live="polite" hidden></div>
+            </div>
+            <div class="form-field">
+              <label for="garmentFormality">Formality <span class="required" aria-hidden="true">*</span></label>
+              <select id="garmentFormality" name="garmentFormality" required aria-describedby="formalityError" class="select">
+                <option value="1" selected>1 - Casual</option>
+                <option value="2">2 - Smart Casual</option>
+                <option value="3">3 - Business Casual</option>
+                <option value="4">4 - Formal</option>
+                <option value="5">5 - Black Tie</option>
+              </select>
+              <div class="field-error" id="formalityError" aria-live="polite" hidden></div>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Tags -->
+        <fieldset class="form-fieldset">
+          <legend class="fieldset-legend">Tags</legend>
+          <div class="tags-input-row">
+            <input type="text" id="garmentTagInput" placeholder="Add a tag and press Enter" autocomplete="off" class="input">
+            <button type="button" class="btn btn-secondary" id="suggestTagsBtn">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"></path>
+              </svg>
+              <span>Suggest with AI</span>
+            </button>
+          </div>
+          <div class="tags-chip-list" id="currentTagsList" aria-label="Current tags"></div>
+          <div class="tags-suggestions" id="suggestedTagsList" hidden>
+            <p class="suggestions-hint">AI suggestions &mdash; click to accept, or dismiss:</p>
+            <div class="tags-chip-list" id="suggestedTagsChips"></div>
+          </div>
+          <input type="hidden" name="garmentTags" id="garmentTagsHidden" value="[]">
         </fieldset>
 
         <!-- Form Actions -->

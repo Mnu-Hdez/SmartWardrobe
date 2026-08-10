@@ -60,7 +60,7 @@ class GarmentBase(BaseModel):
     dominant_color_hex: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
     pattern: str = Field(default=Pattern.SOLID)
     formality: int = Field(default=1, ge=1, le=5)
-
+    tags: list[str] = Field(default_factory=list)
 
 class GarmentCreate(GarmentBase):
     """For creating a new garment (metadata only - image handled separately)"""
@@ -79,7 +79,7 @@ class GarmentUpdate(BaseModel):
     color_hex: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
     pattern: str | None = None
     formality: int | None = Field(None, ge=1, le=5)
-
+    tags: list[str] | None = None
 
 class GarmentResponse(GarmentBase):
     id: int
@@ -91,19 +91,33 @@ class GarmentResponse(GarmentBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class BulkDeleteRequest(BaseModel):
-    ids: list[int]
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class GarmentListResponse(BaseModel):
     garments: list[GarmentResponse]
     total: int
     page: int
     page_size: int
 
+# ========== TAG SUGGESTION SCHEMAS ==========
 
+
+class TagSuggestionRequest(BaseModel):
+    """Metadata used to ask the AI provider for suggested tags.
+    No garment_id required — usable both while creating a new garment
+    and while editing an existing one."""
+
+    name: str = Field(..., min_length=1, max_length=200)
+    type: str
+    color_name: str | None = None
+    material: str | None = None
+    brand: str | None = None
+    pattern: str | None = None
+    season: str | None = None
+    existing_tags: list[str] = Field(default_factory=list)
+
+
+class TagSuggestionResponse(BaseModel):
+    suggested_tags: list[str]
+    provider: str
 # ========== OUTFIT SCHEMAS ==========
 
 
@@ -201,13 +215,14 @@ class PackingPlanItem(BaseModel):
     days_covered: int
 
 
-class PackingOutfit(OutfitResponse):
-    """Reuse OutfitResponse shape so packing outfits serialize the same way."""
-    pass
+class PackingOutfit(BaseModel):
+    name: str
+    score: float
+    garments: list[GarmentResponse]
 
 
 class PackingPlanResponse(BaseModel):
-    outfits: list[OutfitResponse]
+    outfits: list[PackingOutfit]
     packing_list: list[PackingPlanItem]
     total_items: int
     days_covered: int
