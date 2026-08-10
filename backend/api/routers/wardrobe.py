@@ -12,6 +12,7 @@ from backend.core.config import settings
 from backend.database.connection import get_session
 from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
+    BulkDeleteRequest,
     FeedbackRequest,
     FeedbackResponse,
     GarmentCreate,
@@ -174,10 +175,10 @@ async def delete_garment(garment_id: int, session: Session = Depends(get_session
 
 
 @router.post("/bulk-delete", status_code=status.HTTP_204_NO_CONTENT)
-async def bulk_delete_garments(ids: list[int], session: Session = Depends(get_session)):
+async def bulk_delete_garments(request: BulkDeleteRequest, session: Session = Depends(get_session)):
     """Bulk delete garments by IDs"""
     repo = GarmentRepository(session)
-    deleted = repo.bulk_delete(ids)
+    deleted = repo.bulk_delete(request.ids)
     return {"deleted": deleted}
 
 
@@ -345,7 +346,7 @@ async def create_rule(rule_data: StyleRuleCreate, session: Session = Depends(get
     rule = StyleRule(
         name=rule_data.name,
         rule_type=rule_data.rule_type,
-        parameters=json.dumps(rule_data.parameters),
+        parameters=rule_data.parameters,
         weight=rule_data.weight,
         is_active=rule_data.is_active,
     )

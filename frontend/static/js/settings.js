@@ -187,8 +187,8 @@ class SettingsUI {
         this.showGridLoading();
 
         try {
-            const garments = await api.getGarments({ limit: 1000 });
-            this.state.garments = Array.isArray(garments) ? garments : [];
+            const response = await api.getGarments({ limit: 1000 });
+            this.state.garments = response.garments || [];
             this.applyFilters();
         } catch (error) {
             console.error('Error loading garments:', error);

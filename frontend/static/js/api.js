@@ -132,7 +132,7 @@ class ApiClient {
     }
     
     async bulkDeleteGarments(ids) {
-        return this.request('/garments/bulk', {
+        return this.request('/garments/bulk-delete', {
             method: 'DELETE',
             body: JSON.stringify({ ids })
         });
@@ -199,18 +199,19 @@ class ApiClient {
         });
     }
     
-    async getOutfitFeedback(outfitId) {
-        return this.request(`/feedback/outfit/${outfitId}`);
-    }
-    
-    async getGarmentFeedback(garmentId) {
-        return this.request(`/feedback/garment/${garmentId}`);
-    }
+    // Backend only exposes POST feedback endpoints; these GETs don't exist.
+    // async getOutfitFeedback(outfitId) {
+    //     return this.request(`/feedback/outfit/${outfitId}`);
+    // }
+    //
+    // async getGarmentFeedback(garmentId) {
+    //     return this.request(`/feedback/garment/${garmentId}`);
+    // }
     
     // ========== PACKING ==========
     
     async createPackingPlan(request) {
-        return this.request('/packing', {
+        return this.request('/recommend/packing', {
             method: 'POST',
             body: JSON.stringify(request)
         });
