@@ -1,13 +1,13 @@
 # Smart Wardrobe - API Router
 # Wardrobe CRUD endpoints
 
-import os
 import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlmodel import Session
 
+from backend.core.auth import require_api_key
 from backend.core.config import settings
 from backend.database.connection import get_session
 from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
@@ -79,7 +79,12 @@ async def list_garments(
     )
 
 
-@router.post("", response_model=GarmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=GarmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_api_key)],
+)
 async def create_garment(
     name: str = Form(...),
     brand: str | None = Form(None),
@@ -95,21 +100,38 @@ async def create_garment(
     session: Session = Depends(get_session),
 ):
     """Create a new garment with image upload"""
-    # Validate image
+    # Content-Type header is client-supplied and trivially spoofable, so it's
+    # only a fast pre-check; the real check is decoding the bytes below.
     if not garmentImage.content_type or not garmentImage.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
-    # Generate unique filenames
-    ext = os.path.splitext(garmentImage.filename)[1].lower()
-    if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
-        ext = ".jpg"
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    raw_bytes = await garmentImage.read(max_bytes + 1)
+    if len(raw_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=413, detail=f"Image exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit"
+        )
+
+    from io import BytesIO
+
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        with Image.open(BytesIO(raw_bytes)) as img:
+            img.verify()
+            detected_format = (img.format or "JPEG").lower()
+    except UnidentifiedImageError:
+        raise HTTPException(status_code=400, detail="File is not a valid image") from None
+
+    ext_by_format = {"jpeg": ".jpg", "png": ".png", "webp": ".webp"}
+    ext = ext_by_format.get(detected_format, ".jpg")
 
     raw_filename = f"{uuid.uuid4()}{ext}"
     raw_path = settings.IMAGES_RAW_DIR / raw_filename
 
-    # Save raw image
+    # Save raw image (already validated & read into memory above)
     with open(raw_path, "wb") as f:
-        shutil.copyfileobj(garmentImage.file, f)
+        f.write(raw_bytes)
 
     # TODO: Process with SAM to create mask (processed image)
     # For now, copy raw as processed
@@ -153,7 +175,7 @@ async def get_garment(garment_id: int, session: Session = Depends(get_session)):
     return GarmentResponse.model_validate(garment)
 
 
-@router.patch("/{garment_id}", response_model=GarmentResponse)
+@router.patch("/{garment_id}", response_model=GarmentResponse, dependencies=[Depends(require_api_key)])
 async def update_garment(
     garment_id: int, garment_update: GarmentUpdate, session: Session = Depends(get_session)
 ):
@@ -165,7 +187,7 @@ async def update_garment(
     return GarmentResponse.model_validate(garment)
 
 
-@router.delete("/{garment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{garment_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_api_key)])
 async def delete_garment(garment_id: int, session: Session = Depends(get_session)):
     """Delete a garment"""
     repo = GarmentRepository(session)
@@ -174,9 +196,11 @@ async def delete_garment(garment_id: int, session: Session = Depends(get_session
         raise HTTPException(status_code=404, detail="Garment not found")
 
 
-@router.post("/bulk-delete", status_code=status.HTTP_204_NO_CONTENT)
-async def bulk_delete_garments(request: BulkDeleteRequest, session: Session = Depends(get_session)):
+@router.post("/bulk-delete", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_api_key)])
+async def bulk_delete_garments(ids: list[int], session: Session = Depends(get_session)):
     """Bulk delete garments by IDs"""
+    if len(ids) > 500:
+        raise HTTPException(status_code=400, detail="Cannot delete more than 500 garments at once")
     repo = GarmentRepository(session)
     deleted = repo.bulk_delete(request.ids)
     return {"deleted": deleted}
@@ -206,7 +230,7 @@ async def list_outfits(
     )
 
 
-@outfit_router.post("", response_model=OutfitResponse, status_code=status.HTTP_201_CREATED)
+@outfit_router.post("", response_model=OutfitResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_api_key)])
 async def create_outfit(outfit_data: OutfitCreate, session: Session = Depends(get_session)):
     """Create a new outfit from garment IDs"""
     garment_repo = GarmentRepository(session)
@@ -253,7 +277,7 @@ async def get_outfit(outfit_id: int, session: Session = Depends(get_session)):
     return OutfitResponse.model_validate(outfit)
 
 
-@outfit_router.patch("/{outfit_id}", response_model=OutfitResponse)
+@outfit_router.patch("/{outfit_id}", response_model=OutfitResponse, dependencies=[Depends(require_api_key)])
 async def update_outfit(
     outfit_id: int, outfit_update: OutfitUpdate, session: Session = Depends(get_session)
 ):
@@ -265,7 +289,7 @@ async def update_outfit(
     return OutfitResponse.model_validate(outfit)
 
 
-@outfit_router.delete("/{outfit_id}", status_code=status.HTTP_204_NO_CONTENT)
+@outfit_router.delete("/{outfit_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_api_key)])
 async def delete_outfit(outfit_id: int, session: Session = Depends(get_session)):
     """Delete an outfit"""
     repo = OutfitRepository(session)
@@ -309,16 +333,20 @@ feedback_router = APIRouter(prefix="/feedback", tags=["Feedback"])
 async def rate_outfit(request: FeedbackRequest, session: Session = Depends(get_session)):
     """Rate an outfit"""
     service = OutfitService(session)
-    success = service.rate_outfit(request.outfit_id, request.rating, request.feedback_type)
-    return FeedbackResponse(success=success, message="Feedback recorded")
+    success = service.rate_outfit(request.outfit_id, request.rating)
+    if not success:
+        raise HTTPException(status_code=404, detail="Outfit not found")
+    return FeedbackResponse(success=True, message="Feedback recorded")
 
 
 @feedback_router.post("/garment", response_model=FeedbackResponse)
 async def rate_garment(request: FeedbackRequest, session: Session = Depends(get_session)):
     """Rate a garment"""
     service = OutfitService(session)
-    success = service.rate_garment(request.garment_id, request.rating, request.feedback_type)
-    return FeedbackResponse(success=success, message="Feedback recorded")
+    success = service.rate_garment(request.garment_id, request.rating)
+    if not success:
+        raise HTTPException(status_code=404, detail="Garment not found")
+    return FeedbackResponse(success=True, message="Feedback recorded")
 
 
 # ========== STYLE RULE ENDPOINTS ==========
@@ -337,7 +365,7 @@ async def list_rules(active_only: bool = Query(True), session: Session = Depends
     )
 
 
-@rules_router.post("", response_model=StyleRuleResponse, status_code=status.HTTP_201_CREATED)
+@rules_router.post("", response_model=StyleRuleResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_api_key)])
 async def create_rule(rule_data: StyleRuleCreate, session: Session = Depends(get_session)):
     """Create a style rule"""
     repo = StyleRuleRepository(session)
@@ -362,7 +390,7 @@ async def get_rule(rule_id: int, session: Session = Depends(get_session)):
     return StyleRuleResponse.model_validate(rule)
 
 
-@rules_router.patch("/{rule_id}", response_model=StyleRuleResponse)
+@rules_router.patch("/{rule_id}", response_model=StyleRuleResponse, dependencies=[Depends(require_api_key)])
 async def update_rule(
     rule_id: int, rule_update: StyleRuleUpdate, session: Session = Depends(get_session)
 ):
@@ -378,7 +406,7 @@ async def update_rule(
     return StyleRuleResponse.model_validate(rule)
 
 
-@rules_router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+@rules_router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_api_key)])
 async def delete_rule(rule_id: int, session: Session = Depends(get_session)):
     """Delete a style rule"""
     repo = StyleRuleRepository(session)

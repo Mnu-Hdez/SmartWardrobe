@@ -36,6 +36,7 @@ class TestGarmentSchemas:
             name="Test Shirt",
             type="top",
             color_name="blue",
+            color_hex="#0000FF",
             dominant_color_hex="#0000FF",
             pattern="solid",
             formality=2,
@@ -48,7 +49,13 @@ class TestGarmentSchemas:
     def test_garment_create_invalid_color_hex(self):
         """Test invalid hex color validation."""
         with pytest.raises(ValidationError) as exc_info:
-            GarmentCreate(name="Test", type="top", color_name="red", dominant_color_hex="not-a-hex")
+            GarmentCreate(
+                name="Test",
+                type="top",
+                color_name="red",
+                color_hex="#FF0000",
+                dominant_color_hex="not-a-hex",
+            )
         assert "dominant_color_hex" in str(exc_info.value)
 
     def test_garment_create_invalid_formality(self):
@@ -58,6 +65,7 @@ class TestGarmentSchemas:
                 name="Test",
                 type="top",
                 color_name="red",
+                color_hex="#FF0000",
                 dominant_color_hex="#FF0000",
                 formality=6,  # Max is 5
             )
@@ -170,8 +178,8 @@ class TestRecommendationSchemas:
         """Test default values."""
         req = OutfitRecommendationRequest(occasion="casual")
         assert req.season == "all_season"
-        assert req.top_n == 5
-        assert req.exclude_garment_ids == []
+        assert req.top_n == 1  # matches schema default and frontend's request payload
+        assert req.exclude_garment_ids is None
 
 
 class TestPackingSchemas:

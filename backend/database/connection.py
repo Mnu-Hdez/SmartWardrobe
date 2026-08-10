@@ -1,19 +1,21 @@
-import os
 from collections.abc import Generator
 from contextlib import contextmanager
 
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-# Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/db/smart_wardrobe.db")
+from backend.core.config import settings
 
-# Create engine
+# Single engine for the whole app. Previously this module and backend/api/main.py
+# each created their own engine from different config sources (this one read
+# DATABASE_URL straight from os.getenv, main.py used settings.DATABASE_URL) -
+# if they ever diverged (e.g. DATABASE_URL only set via .env, not a real env
+# var) requests would silently hit a different database file than the one
+# migrations/startup initialized.
 engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
-    poolclass=StaticPool if "sqlite" in DATABASE_URL else None,
-    echo=os.getenv("SQL_ECHO", "false").lower() == "true",
+    settings.DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
+    poolclass=StaticPool if "sqlite" in settings.DATABASE_URL else None,
 )
 
 
@@ -40,64 +42,3 @@ def get_db_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
-
-
-def init_db() -> None:
-    """Initialize database with default data."""
-    create_db_and_tables()
-
-    # Add default style rules
-    from backend.models.schemas import StyleRuleCreate, StyleRuleType
-    from backend.repositories.style_rule_repository import StyleRuleRepository
-
-    default_rules = [
-        StyleRuleCreate(
-            name="color_harmony_complementary",
-            description="Complementary colors score higher",
-            rule_type=StyleRuleType.COLOR_HARMONY,
-            weight=1.5,
-            parameters={"method": "complementary", "threshold": 30},
-        ),
-        StyleRuleCreate(
-            name="color_harmony_analogous",
-            description="Analogous colors score well",
-            rule_type=StyleRuleType.COLOR_HARMONY,
-            weight=1.2,
-            parameters={"method": "analogous", "threshold": 15},
-        ),
-        StyleRuleCreate(
-            name="color_harmony_monochromatic",
-            description="Monochromatic outfits are elegant",
-            rule_type=StyleRuleType.COLOR_HARMONY,
-            weight=1.0,
-            parameters={"method": "monochromatic", "threshold": 10},
-        ),
-        StyleRuleCreate(
-            name="formality_match",
-            description="Garments should have similar formality levels",
-            rule_type=StyleRuleType.FORMALITY_MATCH,
-            weight=2.0,
-            parameters={"max_difference": 1},
-        ),
-        StyleRuleCreate(
-            name="pattern_balance",
-            description="Avoid too many patterns in one outfit",
-            rule_type=StyleRuleType.PATTERN_BALANCE,
-            weight=1.5,
-            parameters={"max_patterns": 2},
-        ),
-        StyleRuleCreate(
-            name="seasonal_appropriateness",
-            description="Garments should match the season",
-            rule_type=StyleRuleType.SEASON_MATCH,
-            weight=1.0,
-            parameters={},
-        ),
-    ]
-
-    with get_db_session() as session:
-        repo = StyleRuleRepository(session)
-        for rule in default_rules:
-            existing = repo.get_by_name(rule.name)
-            if not existing:
-                repo.create(rule)

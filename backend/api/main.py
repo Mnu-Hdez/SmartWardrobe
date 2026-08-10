@@ -8,22 +8,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlmodel import Session, SQLModel, create_engine
 
 from backend.api.routers import wardrobe
 from backend.core.config import settings
-
-# Database setup
-engine = create_engine(settings.DATABASE_URL, echo=False)
-
-
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
-
-
-def get_session():
-    with Session(engine) as session:
-        yield session
+from backend.database.connection import create_db_and_tables
 
 
 @asynccontextmanager
@@ -44,11 +32,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# CORS - wildcard origins can't legally carry credentials (browsers reject
+# it anyway), so only allow credentials when origins are explicitly listed.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=settings.CORS_ORIGINS != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -101,4 +90,8 @@ async def spa_fallback(path: str):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("api.main:app", host=settings.API_SERVER_IP, port=settings.API_PORT, reload=True)
+    # Module path must match how this file is actually invoked (see Dockerfile
+    # CMD: `uvicorn backend.api.main:app`) or reload/import resolution breaks.
+    uvicorn.run(
+        "backend.api.main:app", host=settings.API_SERVER_IP, port=settings.API_PORT, reload=True
+    )
