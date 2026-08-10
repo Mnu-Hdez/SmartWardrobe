@@ -340,8 +340,6 @@ async def list_rules(active_only: bool = Query(True), session: Session = Depends
 @rules_router.post("", response_model=StyleRuleResponse, status_code=status.HTTP_201_CREATED)
 async def create_rule(rule_data: StyleRuleCreate, session: Session = Depends(get_session)):
     """Create a style rule"""
-    import json
-
     repo = StyleRuleRepository(session)
     rule = StyleRule(
         name=rule_data.name,
@@ -369,13 +367,9 @@ async def update_rule(
     rule_id: int, rule_update: StyleRuleUpdate, session: Session = Depends(get_session)
 ):
     """Update a style rule"""
-    import json
-
     repo = StyleRuleRepository(session)
 
     update_data = rule_update.model_dump(exclude_unset=True)
-    if "parameters" in update_data:
-        update_data["parameters"] = json.dumps(update_data["parameters"])
 
     # Convert to StyleRuleUpdate for repo
     rule = repo.update(rule_id, StyleRuleUpdate(**update_data))
