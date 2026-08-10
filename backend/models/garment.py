@@ -4,7 +4,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import DateTime, Integer, String
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
 
@@ -131,7 +131,7 @@ class StyleRule(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(sa_column=Column(String(200), nullable=False))
     rule_type: str = Field(sa_column=Column(String(50), nullable=False))
-    parameters: str = Field(sa_column=Column(Text, nullable=False))  # JSON string
+    parameters: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     weight: float = Field(default=1.0, sa_column=Column(Integer, nullable=False))
     is_active: bool = Field(default=True, sa_column=Column(Integer, nullable=False))
     created_at: datetime = Field(

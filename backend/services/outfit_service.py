@@ -314,13 +314,18 @@ class OutfitService:
         # Save outfits
         saved_outfits = [self._save_outfit(o) for o in outfits]
 
-        # Check packing list has versatility scores
+        # Build packing list using saved outfit items (which have garment_id)
         packing_list = []
         for g, v in scored_garments[: request.max_items]:
+            days_covered = sum(
+                1
+                for o in saved_outfits
+                if any(item.garment_id == g.id for item in o.items)
+            )
             packing_list.append({
                 "garment": g,
                 "versatility_score": v,
-                "days_covered": sum(1 for o in outfits if g in (o._garments if hasattr(o, '_garments') else [])),
+                "days_covered": days_covered,
             })
 
         return {

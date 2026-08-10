@@ -365,8 +365,9 @@ class KioskUI {
                 <div class="outfit-garments">
         `;
 
-        if (outfit.garments && outfit.garments.length > 0) {
-            outfit.garments.forEach(garment => {
+        if (outfit.items && outfit.items.length > 0) {
+            outfit.items.forEach(item => {
+                const garment = item.garment;
                 const colorHex = garment.color_hex || '#666666';
                 // Use raw_image_path for high-quality display - serve via /images/raw/
                 const imageUrl = garment.raw_image_path
@@ -567,19 +568,21 @@ class KioskUI {
 
     async loadStats() {
         try {
-            const [garments, outfits] = await Promise.all([
-                api.getGarments({ limit: 1000 }).catch(() => []),
-                api.getOutfits({ limit: 1000 }).catch(() => [])
+            const [garmentsResponse, outfitsResponse] = await Promise.all([
+                api.getGarments({ limit: 1000 }).catch(() => ({garments: []})),
+                api.getOutfits({ limit: 1000 }).catch(() => ({outfits: []}))
             ]);
+            const garments = garmentsResponse.garments || [];
+            const outfits = outfitsResponse.outfits || [];
 
             this.state.stats = {
-                totalGarments: Array.isArray(garments) ? garments.length : 0,
-                totalOutfits: Array.isArray(outfits) ? outfits.length : 0,
+                totalGarments: garments.length,
+                totalOutfits: outfits.length,
                 avgScore: 0,
                 favorites: 0
             };
 
-            if (Array.isArray(outfits) && outfits.length > 0) {
+            if (outfits.length > 0) {
                 const scores = outfits.map(o => o.score || 0).filter(s => s > 0);
                 this.state.stats.avgScore = scores.length > 0
                     ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
@@ -667,8 +670,9 @@ class KioskUI {
                         <div class="packing-outfit-items">
                 `;
 
-                if (outfit.garments) {
-                    outfit.garments.forEach(g => {
+                if (outfit.items) {
+                    outfit.items.forEach(item => {
+                        const g = item.garment;
                         const colorHex = g.color_hex || '#666666';
                         html += `
                             <span class="packing-outfit-item">

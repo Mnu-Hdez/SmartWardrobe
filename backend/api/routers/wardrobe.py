@@ -12,6 +12,7 @@ from backend.core.config import settings
 from backend.database.connection import get_session
 from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
+    BulkDeleteRequest,
     FeedbackRequest,
     FeedbackResponse,
     GarmentCreate,
@@ -201,7 +202,7 @@ async def bulk_delete_garments(ids: list[int], session: Session = Depends(get_se
     if len(ids) > 500:
         raise HTTPException(status_code=400, detail="Cannot delete more than 500 garments at once")
     repo = GarmentRepository(session)
-    deleted = repo.bulk_delete(ids)
+    deleted = repo.bulk_delete(request.ids)
     return {"deleted": deleted}
 
 
@@ -367,13 +368,11 @@ async def list_rules(active_only: bool = Query(True), session: Session = Depends
 @rules_router.post("", response_model=StyleRuleResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_api_key)])
 async def create_rule(rule_data: StyleRuleCreate, session: Session = Depends(get_session)):
     """Create a style rule"""
-    import json
-
     repo = StyleRuleRepository(session)
     rule = StyleRule(
         name=rule_data.name,
         rule_type=rule_data.rule_type,
-        parameters=json.dumps(rule_data.parameters),
+        parameters=rule_data.parameters,
         weight=rule_data.weight,
         is_active=rule_data.is_active,
     )
@@ -396,13 +395,9 @@ async def update_rule(
     rule_id: int, rule_update: StyleRuleUpdate, session: Session = Depends(get_session)
 ):
     """Update a style rule"""
-    import json
-
     repo = StyleRuleRepository(session)
 
     update_data = rule_update.model_dump(exclude_unset=True)
-    if "parameters" in update_data:
-        update_data["parameters"] = json.dumps(update_data["parameters"])
 
     # Convert to StyleRuleUpdate for repo
     rule = repo.update(rule_id, StyleRuleUpdate(**update_data))

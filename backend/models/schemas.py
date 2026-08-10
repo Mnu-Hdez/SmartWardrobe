@@ -91,6 +91,12 @@ class GarmentResponse(GarmentBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BulkDeleteRequest(BaseModel):
+    ids: list[int]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class GarmentListResponse(BaseModel):
     garments: list[GarmentResponse]
     total: int
@@ -195,14 +201,13 @@ class PackingPlanItem(BaseModel):
     days_covered: int
 
 
-class PackingOutfit(BaseModel):
-    name: str
-    score: float
-    garments: list[GarmentResponse]
+class PackingOutfit(OutfitResponse):
+    """Reuse OutfitResponse shape so packing outfits serialize the same way."""
+    pass
 
 
 class PackingPlanResponse(BaseModel):
-    outfits: list[PackingOutfit]
+    outfits: list[OutfitResponse]
     packing_list: list[PackingPlanItem]
     total_items: int
     days_covered: int
