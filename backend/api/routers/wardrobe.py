@@ -8,18 +8,24 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlmodel import Session
 
 from backend.core.auth import require_api_key
-from backend.core.config import settings
+from backend.core.config import read_daily_config, settings
 from backend.ai_providers.factory import AIProviderFactory
 from backend.database.connection import get_session
 from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
+    AIConfigResponse,
+    AIConfigUpdate,
+    DailyOutfitConfig,
+    DailyOutfitConfigResponse,
     FeedbackRequest,
     FeedbackResponse,
     GarmentCreate,
     GarmentListResponse,
     GarmentResponse,
+    GarmentSwapRequest,
     GarmentUpdate,
     HealthResponse,
+    ImageAnalysisResponse,
     OutfitCreate,
     OutfitListResponse,
     OutfitRecommendationRequest,
@@ -201,6 +207,28 @@ async def suggest_garment_tags(request: TagSuggestionRequest):
     return TagSuggestionResponse(suggested_tags=suggested, provider=provider.name)
 
 
+@router.post("/analyze-image", response_model=ImageAnalysisResponse)
+async def analyze_garment_image(image: UploadFile = File(...)):
+    """Best-effort field guesses from a garment photo (name/type/color/
+    material/pattern/formality/tags), used to auto-fill the add-garment form.
+    Read-only / side-effect-free — nothing is saved, and every field the user
+    sees remains editable before they submit, same review-before-accept
+    pattern as tag suggestions."""
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    raw_bytes = await image.read(max_bytes + 1)
+    if len(raw_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=413, detail=f"Image exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit"
+        )
+
+    provider = AIProviderFactory.get_provider()
+    result = provider.analyze_image(raw_bytes, image.content_type)
+    return ImageAnalysisResponse(**result, provider=provider.name)
+
+
 @router.get("/{garment_id}", response_model=GarmentResponse)
 async def get_garment(garment_id: int, session: Session = Depends(get_session)):
     """Get a single garment by ID"""
@@ -360,6 +388,36 @@ async def create_packing_plan(request: PackingPlanRequest, session: Session = De
     return PackingPlanResponse(**result)
 
 
+@recommend_router.post("/swap-garment", response_model=OutfitResponse)
+async def swap_garment(request: GarmentSwapRequest, session: Session = Depends(get_session)):
+    """Swap one garment of the current look for the next/previous of the
+    same type (kiosk per-garment swipe gesture); rebalances the rest of
+    the look against the active style rules."""
+    service = OutfitService(session)
+    try:
+        result = service.swap_garment(request)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return OutfitResponse.model_validate(result)
+
+
+@recommend_router.get("/daily", response_model=OutfitResponse)
+async def get_daily_outfit(session: Session = Depends(get_session)):
+    """Today's automatically generated look (no top repeated in 7 days, no
+    bottom/outerwear repeated on 2 consecutive days). Generates it on this
+    call if the nightly scheduler hasn't run yet today - idempotent, so
+    reloading the kiosk never regenerates a fresh one."""
+    config = read_daily_config()
+    service = OutfitService(session)
+    try:
+        result = service.get_or_create_daily_outfit(
+            config["occasion"], config["season"], config.get("formality")
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return OutfitResponse.model_validate(result)
+
+
 # ========== FEEDBACK ENDPOINTS ==========
 
 feedback_router = APIRouter(prefix="/feedback", tags=["Feedback"])
@@ -474,3 +532,68 @@ async def health_check(session: Session = Depends(get_session)):
         db_status = "disconnected"
 
     return HealthResponse(status="ok", database=db_status, ai_provider=settings.AI_PROVIDER)
+
+
+@health_router.get("/config/ai", response_model=AIConfigResponse)
+async def get_ai_config():
+    """Current AI provider + which keys are configured (never returns the
+    keys themselves, only whether they're set)."""
+    return AIConfigResponse(
+        provider=settings.AI_PROVIDER,
+        nim_configured=bool(settings.NIM_API_KEY),
+        gemini_configured=bool(settings.GEMINI_API_KEY),
+    )
+
+
+@health_router.patch("/config/ai", response_model=AIConfigResponse, dependencies=[Depends(require_api_key)])
+async def update_ai_config(config: AIConfigUpdate):
+    """Switch AI provider / set API keys on the running process, AND persist
+    them to settings.AI_CONFIG_PATH (in the durable data volume) so a
+    `--reload` restart during dev - or a real container restart - doesn't
+    silently revert to the .env/docker-compose defaults."""
+    settings.AI_PROVIDER = config.provider
+    if config.nim_api_key is not None:
+        settings.NIM_API_KEY = config.nim_api_key
+    if config.gemini_api_key is not None:
+        settings.GEMINI_API_KEY = config.gemini_api_key
+
+    AIProviderFactory.clear_cache()
+
+    import json
+
+    settings.AI_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    settings.AI_CONFIG_PATH.write_text(
+        json.dumps(
+            {
+                "provider": settings.AI_PROVIDER,
+                "nim_api_key": settings.NIM_API_KEY,
+                "gemini_api_key": settings.GEMINI_API_KEY,
+            }
+        )
+    )
+
+    return AIConfigResponse(
+        provider=settings.AI_PROVIDER,
+        nim_configured=bool(settings.NIM_API_KEY),
+        gemini_configured=bool(settings.GEMINI_API_KEY),
+        persisted=True,
+    )
+
+
+@health_router.get("/config/daily", response_model=DailyOutfitConfigResponse)
+async def get_daily_config():
+    """Current defaults (occasion/season/formality/enabled) used by the
+    nightly outfit-generation job."""
+    return DailyOutfitConfigResponse(**read_daily_config())
+
+
+@health_router.patch("/config/daily", response_model=DailyOutfitConfigResponse, dependencies=[Depends(require_api_key)])
+async def update_daily_config(config: DailyOutfitConfig):
+    """Persist the daily-generation defaults to settings.DAILY_CONFIG_PATH
+    (durable data volume), read by both GET /recommend/daily and the
+    scheduler on its next run."""
+    import json
+
+    settings.DAILY_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    settings.DAILY_CONFIG_PATH.write_text(json.dumps(config.model_dump()))
+    return DailyOutfitConfigResponse(**config.model_dump())

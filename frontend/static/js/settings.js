@@ -63,6 +63,8 @@ class SettingsUI {
         this.elements.imagePreview = document.getElementById('imagePreview');
         this.elements.previewImage = document.getElementById('previewImage');
         this.elements.removeImage = document.getElementById('removeImage');
+        this.elements.autoFillBtn = document.getElementById('autoFillBtn');
+        this.elements.autoFillBtnText = document.getElementById('autoFillBtnText');
 
         // Style & Tags fields
         this.elements.garmentColorName = document.getElementById('garmentColorName');
@@ -79,7 +81,9 @@ class SettingsUI {
         // System status
         this.elements.aiProviderStatus = document.getElementById('aiProviderStatus');
         this.elements.dbStatus = document.getElementById('dbStatus');
+        this.elements.aiProviderSelect = document.getElementById('aiProviderSelect');
         this.elements.nimApiKeyInput = document.getElementById('nimApiKeyInput');
+        this.elements.geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
         this.elements.saveConfigBtn = document.getElementById('saveConfigBtn');
     }
 
@@ -134,6 +138,11 @@ class SettingsUI {
         // Remove image
         if (this.elements.removeImage) {
             this.elements.removeImage.addEventListener('click', () => this.clearImagePreview());
+        }
+
+        // Auto-fill with AI
+        if (this.elements.autoFillBtn) {
+            this.elements.autoFillBtn.addEventListener('click', () => this.autoFillFromImage());
         }
 
         // Tags
@@ -524,8 +533,28 @@ class SettingsUI {
                 await api.updateGarment(parseInt(editId), garmentData);
                 showToast('Garment updated', 'success');
             } else {
-                formData.set('tags', JSON.stringify(this.state.currentTags));
-                await api.createGarment(formData);
+                // The form's `name` attributes are prefixed (garmentName, garmentType...)
+                // for readability/namespacing, but the backend's multipart Form(...)
+                // params expect the unprefixed keys. Rebuild the payload explicitly
+                // rather than relying on FormData(form) 1:1.
+                const uploadData = new FormData();
+                uploadData.set('name', formData.get('garmentName') || '');
+                uploadData.set('type', formData.get('garmentType') || '');
+                uploadData.set('season', formData.get('garmentSeason') || '');
+                uploadData.set('color_name', formData.get('garmentColorName') || '');
+                uploadData.set('color_hex', formData.get('garmentColorHex') || '');
+                uploadData.set('pattern', formData.get('garmentPattern') || '');
+                uploadData.set('formality', formData.get('garmentFormality') || '1');
+                const brand = formData.get('garmentBrand');
+                if (brand) uploadData.set('brand', brand);
+                const size = formData.get('garmentSize');
+                if (size) uploadData.set('size', size);
+                const material = formData.get('garmentMaterial');
+                if (material) uploadData.set('material', material);
+                uploadData.set('tags', JSON.stringify(this.state.currentTags));
+                uploadData.set('garmentImage', formData.get('garmentImage'));
+
+                await api.createGarment(uploadData);
                 showToast('Garment saved successfully', 'success');
             }
 
@@ -586,6 +615,10 @@ class SettingsUI {
             this.showImagePreview(e.target.result);
         };
         reader.readAsDataURL(file);
+
+        if (this.elements.autoFillBtn) {
+            this.elements.autoFillBtn.hidden = false;
+        }
     }
 
     showImagePreview(dataUrl) {
@@ -607,6 +640,7 @@ class SettingsUI {
         if (imagePreview) imagePreview.hidden = true;
         if (fileInput) fileInput.value = '';
         if (uploadZone) uploadZone.classList.remove('drag-active');
+        if (this.elements.autoFillBtn) this.elements.autoFillBtn.hidden = true;
     }
 
     // ========== TAGS ==========
@@ -672,6 +706,79 @@ class SettingsUI {
 
     // ========== SYSTEM CONFIGURATION ==========
 
+    async autoFillFromImage() {
+        const fileInput = this.elements.garmentImage;
+        const file = fileInput?.files?.[0];
+        if (!file) {
+            showToast('Select an image first', 'warning');
+            return;
+        }
+
+        const btn = this.elements.autoFillBtn;
+        const btnText = this.elements.autoFillBtnText;
+        const originalText = btnText?.textContent;
+        if (btn) btn.disabled = true;
+        if (btnText) btnText.textContent = 'Analyzing...';
+
+        try {
+            const result = await api.analyzeImage(file);
+            const form = this.elements.addGarmentForm;
+            let filledCount = 0;
+
+            // Only fill fields that are still empty/default, so we never
+            // clobber something the user already typed on purpose.
+            if (result.name && form.garmentName && !form.garmentName.value.trim()) {
+                form.garmentName.value = result.name;
+                filledCount++;
+            }
+            if (result.type && form.garmentType && !form.garmentType.value) {
+                form.garmentType.value = result.type;
+                filledCount++;
+            }
+            if (result.color_name && form.garmentColorName && !form.garmentColorName.value.trim()) {
+                form.garmentColorName.value = result.color_name;
+                filledCount++;
+            }
+            if (result.color_hex && form.garmentColorHex) {
+                form.garmentColorHex.value = result.color_hex;
+                filledCount++;
+            }
+            if (result.material && form.garmentMaterial && !form.garmentMaterial.value.trim()) {
+                form.garmentMaterial.value = result.material;
+                filledCount++;
+            }
+            if (result.pattern && form.garmentPattern) {
+                form.garmentPattern.value = result.pattern;
+                filledCount++;
+            }
+            if (result.formality && form.garmentFormality) {
+                form.garmentFormality.value = String(result.formality);
+                filledCount++;
+            }
+            if (result.tags && result.tags.length) {
+                const newOnes = result.tags.filter(t => !this.state.currentTags.includes(t));
+                this.state.suggestedTags = [...new Set([...this.state.suggestedTags, ...newOnes])];
+                this.renderTags();
+            }
+
+            if (filledCount === 0 && (!result.tags || result.tags.length === 0)) {
+                showToast(
+                    result.provider === 'local'
+                        ? 'Only color detected — connect NIM or Gemini for full auto-fill'
+                        : 'Could not confidently read this photo',
+                    'info'
+                );
+            } else {
+                showToast(`Auto-filled from photo (${result.provider})`, 'success');
+            }
+        } catch (error) {
+            showToast(`Error: ${error.message}`, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+            if (btnText) btnText.textContent = originalText;
+        }
+    }
+
     async suggestTagsWithAI() {
         const form = this.elements.addGarmentForm;
         const name = form.garmentName?.value?.trim();
@@ -712,15 +819,32 @@ class SettingsUI {
     async loadSystemStatus() {
         try {
             const health = await api.healthCheck();
+            const providerLabels = {
+                nim: 'NVIDIA NIM',
+                gemini: 'Google Gemini',
+                local: 'Local Rules'
+            };
 
             if (this.elements.aiProviderStatus) {
-                this.elements.aiProviderStatus.textContent = health.ai_provider === 'nim' ? 'NVIDIA NIM (Advanced)' : 'Local Rules (Standard)';
-                this.elements.aiProviderStatus.className = 'status-value ' + (health.ai_provider === 'nim' ? 'status-success' : 'status-warning');
+                this.elements.aiProviderStatus.textContent = providerLabels[health.ai_provider] || health.ai_provider;
+                this.elements.aiProviderStatus.className = 'status-value ' + (health.ai_provider === 'local' ? 'status-warning' : 'status-success');
             }
 
             if (this.elements.dbStatus) {
                 this.elements.dbStatus.textContent = health.database === 'connected' ? 'Connected' : 'Disconnected';
                 this.elements.dbStatus.className = 'status-value ' + (health.database === 'connected' ? 'status-success' : 'status-error');
+            }
+
+            if (this.elements.aiProviderSelect) {
+                this.elements.aiProviderSelect.value = health.ai_provider;
+            }
+
+            const config = await api.getAIConfig();
+            if (this.elements.nimApiKeyInput && config.nim_configured) {
+                this.elements.nimApiKeyInput.placeholder = '•••••••• (configured)';
+            }
+            if (this.elements.geminiApiKeyInput && config.gemini_configured) {
+                this.elements.geminiApiKeyInput.placeholder = '•••••••• (configured)';
             }
         } catch (error) {
             console.error('Error loading system status:', error);
@@ -728,14 +852,36 @@ class SettingsUI {
     }
 
     async saveSystemConfig() {
-        const apiKey = this.elements.nimApiKeyInput?.value?.trim();
+        const provider = this.elements.aiProviderSelect?.value || 'local';
+        const nimKey = this.elements.nimApiKeyInput?.value?.trim();
+        const geminiKey = this.elements.geminiApiKeyInput?.value?.trim();
 
-        if (apiKey) {
-            // In a real implementation, this would update the backend config
-            // For now, we'll show a message
-            showToast('Configuration saved. Restart backend to apply changes.', 'info');
-        } else {
-            showToast('Please enter a valid API Key', 'warning');
+        if (provider === 'nim' && !nimKey) {
+            showToast('Enter a NIM API key, or pick another provider', 'warning');
+            return;
+        }
+        if (provider === 'gemini' && !geminiKey) {
+            showToast('Enter a Google AI Studio API key, or pick another provider', 'warning');
+            return;
+        }
+
+        const btn = this.elements.saveConfigBtn;
+        if (btn) btn.disabled = true;
+
+        try {
+            await api.updateAIConfig({
+                provider,
+                nim_api_key: nimKey || undefined,
+                gemini_api_key: geminiKey || undefined
+            });
+            showToast('AI provider saved and applied — will survive restarts too', 'success');
+            if (this.elements.nimApiKeyInput) this.elements.nimApiKeyInput.value = '';
+            if (this.elements.geminiApiKeyInput) this.elements.geminiApiKeyInput.value = '';
+            await this.loadSystemStatus();
+        } catch (error) {
+            showToast(`Error: ${error.message}`, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
         }
     }
 

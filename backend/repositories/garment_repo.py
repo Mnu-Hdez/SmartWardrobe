@@ -139,6 +139,21 @@ class OutfitRepository:
     def count(self) -> int:
         return self.session.exec(select(func.count(Outfit.id))).one()
 
+    def get_daily_by_date(self, for_date: str) -> Outfit | None:
+        """The auto-generated 'look of the day' for a given ISO date, if any."""
+        query = select(Outfit).where(Outfit.is_daily == True, Outfit.for_date == for_date)  # noqa: E712
+        return self.session.exec(query).first()
+
+    def get_recent_daily(self, since_date: str) -> list[Outfit]:
+        """Daily outfits from since_date (inclusive) onward, oldest first -
+        used to enforce the anti-repeat rules against the last 7 days."""
+        query = (
+            select(Outfit)
+            .where(Outfit.is_daily == True, Outfit.for_date >= since_date)  # noqa: E712
+            .order_by(Outfit.for_date)
+        )
+        return list(self.session.exec(query).all())
+
     def delete(self, outfit_id: int) -> bool:
         outfit = self.get_by_id(outfit_id)
         if not outfit:

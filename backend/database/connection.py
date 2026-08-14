@@ -22,6 +22,24 @@ engine = create_engine(
 def create_db_and_tables() -> None:
     """Create database and tables."""
     SQLModel.metadata.create_all(engine)
+    _ensure_outfit_daily_columns()
+
+
+def _ensure_outfit_daily_columns() -> None:
+    """Lightweight migration for SQLite DBs created before the
+    is_daily/for_date columns existed on Outfit - no alembic migrations are
+    wired up in this project yet, so this just adds the columns if a table
+    from before this feature is missing them. No-op on a fresh DB (created_all
+    already includes them) or on non-SQLite backends."""
+    if "sqlite" not in settings.DATABASE_URL:
+        return
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(outfit)")}
+        if "is_daily" not in columns:
+            conn.exec_driver_sql("ALTER TABLE outfit ADD COLUMN is_daily BOOLEAN NOT NULL DEFAULT 0")
+        if "for_date" not in columns:
+            conn.exec_driver_sql("ALTER TABLE outfit ADD COLUMN for_date VARCHAR(10)")
+        conn.commit()
 
 
 def get_session() -> Generator[Session, None, None]:

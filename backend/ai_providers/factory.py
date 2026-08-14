@@ -1,4 +1,5 @@
 from backend.ai_providers import AIProviderProtocol
+from backend.ai_providers.gemini import GeminiProvider
 from backend.ai_providers.local import LocalRulesProvider
 from backend.ai_providers.nim import NVIDIANIMProvider
 from backend.core.config import get_settings
@@ -25,6 +26,8 @@ class AIProviderFactory:
         # Create new instance
         if name == "nim":
             provider = NVIDIANIMProvider()
+        elif name == "gemini":
+            provider = GeminiProvider()
         else:
             provider = LocalRulesProvider()
 

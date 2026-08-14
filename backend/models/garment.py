@@ -4,7 +4,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
 
@@ -87,6 +87,13 @@ class Outfit(SQLModel, table=True):
     score: float | None = Field(default=None, sa_column=Column(Integer))
     score_breakdown: dict | None = Field(default=None, sa_column=Column(JSON))
     ai_tips: list[str] | None = Field(default=None, sa_column=Column(JSON))
+    # Daily-generation tracking (anti-repeat rules): is_daily marks an outfit
+    # as the auto-generated "look of the day" rather than a manual preview,
+    # and for_date (ISO YYYY-MM-DD) is which day it's for - both are read by
+    # OutfitService.get_or_create_daily_outfit to enforce "no repeated top in
+    # 7 days / no repeated bottom-outerwear on 2 consecutive days".
+    is_daily: bool = Field(default=False, sa_column=Column(Boolean, nullable=False))
+    for_date: str | None = Field(default=None, sa_column=Column(String(10)))
     created_at: datetime = Field(
         default_factory=datetime.utcnow, sa_column=Column(DateTime, nullable=False)
     )

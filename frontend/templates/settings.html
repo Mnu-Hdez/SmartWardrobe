@@ -14,21 +14,21 @@
           <line x1="19" y1="12" x2="5" y2="12"></line>
           <polyline points="12 19 5 12 12 5"></polyline>
         </svg>
-        <span>Back to Kiosk</span>
+        <span data-i18n="nav.back_to_kiosk">Back to Kiosk</span>
       </a>
-      <h1>Wardrobe Settings</h1>
-      <p class="settings-subtitle">Manage your garments and preferences</p>
+      <h1 data-i18n="settings.title">Wardrobe Settings</h1>
+      <p class="settings-subtitle" data-i18n="settings.subtitle">Manage your garments and preferences</p>
     </header>
 
     <section class="garments-section reveal-on-scroll">
       <div class="section-header">
-        <h2>Your Garments</h2>
+        <h2 data-i18n="settings.your_garments">Your Garments</h2>
         <button type="button" class="btn btn-primary" id="openAddGarmentModal" aria-haspopup="dialog" aria-label="Add new garment">
           <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
-          <span>Add Garment</span>
+          <span data-i18n="settings.add_garment">Add Garment</span>
         </button>
       </div>
 
@@ -41,26 +41,66 @@
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
           <circle cx="12" cy="7" r="4"></circle>
         </svg>
-        <h3>No garments yet</h3>
-        <p>Start building your wardrobe by adding your first piece.</p>
+        <h3 data-i18n="settings.empty_title">No garments yet</h3>
+        <p data-i18n="settings.empty_body">Start building your wardrobe by adding your first piece.</p>
         <button type="button" class="btn btn-primary" id="emptyAddGarmentBtn" aria-label="Add your first garment">
           <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
-          <span>Add Garment</span>
+          <span data-i18n="settings.add_garment">Add Garment</span>
         </button>
+      </div>
+    </section>
+
+    <section class="garments-section reveal-on-scroll" style="margin-top: 40px;">
+      <div class="section-header">
+        <h2 data-i18n="settings.ai_config">AI Configuration</h2>
+      </div>
+      <div class="stats-grid" style="margin-bottom: 20px;">
+        <div class="stat-card">
+          <div class="stat-label" style="margin-bottom: 8px;" data-i18n="settings.ai_provider_label">AI Provider</div>
+          <div class="status-value" id="aiProviderStatus">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" style="margin-bottom: 8px;" data-i18n="settings.database_label">Database</div>
+          <div class="status-value" id="dbStatus">—</div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label for="aiProviderSelect" data-i18n="settings.active_provider">Active provider</label>
+          <select id="aiProviderSelect" class="select">
+            <option value="local">Local (no AI, free)</option>
+            <option value="nim">NVIDIA NIM</option>
+            <option value="gemini">Google Gemini (Google AI Studio)</option>
+          </select>
+        </div>
+        <div class="form-field"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label for="nimApiKeyInput">NVIDIA NIM API key</label>
+          <input type="password" id="nimApiKeyInput" class="input" placeholder="nvapi-..." autocomplete="off">
+        </div>
+        <div class="form-field">
+          <label for="geminiApiKeyInput">Google AI Studio API key</label>
+          <input type="password" id="geminiApiKeyInput" class="input" placeholder="AIza..." autocomplete="off">
+        </div>
+      </div>
+      <div class="form-actions" style="justify-content: flex-start; border-top: none; padding-top: 0;">
+        <button type="button" class="btn btn-primary" id="saveConfigBtn" data-i18n="settings.save_config">Save configuration</button>
       </div>
     </section>
   </main>
 
   <!-- Add/Edit Garment Modal -->
-  <dialog id="addGarmentModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <dialog id="addGarmentModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-overlay" aria-hidden="true"></div>
     <div class="modal-content">
       <header class="modal-header">
-        <h2 id="modalTitle">Add Garment</h2>
-        <button type="button" class="modal-close" id="closeAddGarmentModal" aria-label="Close modal">
+        <h2 id="modalTitle" data-i18n="modal.add_garment_title">Add Garment</h2>
+        <button type="button" class="modal-close" id="closeAddGarmentModal" aria-label="Close modal" data-i18n-aria-label="common.close">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -73,7 +113,7 @@
 
         <!-- Image Upload Section -->
         <fieldset class="form-fieldset">
-          <legend class="fieldset-legend">Garment Image</legend>
+          <legend class="fieldset-legend" data-i18n="form.image_legend">Garment Image</legend>
           <div class="image-upload" id="imageUpload">
             <input
               type="file"
@@ -103,15 +143,21 @@
               </button>
             </div>
           </div>
+          <button type="button" class="btn btn-secondary" id="autoFillBtn" hidden style="margin-top: 12px; width: 100%;">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"></path>
+            </svg>
+            <span id="autoFillBtnText" data-i18n="form.autofill">Auto-fill with AI</span>
+          </button>
           <div class="field-error" id="imageError" aria-live="polite" hidden></div>
         </fieldset>
 
         <!-- Basic Info Fields -->
         <fieldset class="form-fieldset">
-          <legend class="fieldset-legend">Basic Information</legend>
+          <legend class="fieldset-legend" data-i18n="form.basic_info_legend">Basic Information</legend>
           <div class="form-row">
             <div class="form-field">
-              <label for="garmentName">Name <span class="required" aria-hidden="true">*</span></label>
+              <label for="garmentName"><span data-i18n="form.name">Name</span> <span class="required" aria-hidden="true">*</span></label>
               <input
                 type="text"
                 id="garmentName"
@@ -126,7 +172,7 @@
               <div class="field-error" id="nameError" aria-live="polite" hidden></div>
             </div>
             <div class="form-field">
-              <label for="garmentBrand">Brand</label>
+              <label for="garmentBrand" data-i18n="form.brand">Brand</label>
               <input
                 type="text"
                 id="garmentBrand"
@@ -142,10 +188,10 @@
 
         <!-- Type & Season Fields -->
         <fieldset class="form-fieldset">
-          <legend class="fieldset-legend">Category</legend>
+          <legend class="fieldset-legend" data-i18n="form.category_legend">Category</legend>
           <div class="form-row">
             <div class="form-field">
-              <label for="garmentType">Type <span class="required" aria-hidden="true">*</span></label>
+              <label for="garmentType"><span data-i18n="form.type">Type</span> <span class="required" aria-hidden="true">*</span></label>
               <select id="garmentType" name="garmentType" required aria-describedby="typeError" class="select">
                 <option value="">Select type</option>
                 <option value="top">Top</option>
@@ -158,14 +204,14 @@
               <div class="field-error" id="typeError" aria-live="polite" hidden></div>
             </div>
             <div class="form-field">
-              <label for="garmentSeason">Season <span class="required" aria-hidden="true">*</span></label>
+              <label for="garmentSeason"><span data-i18n="form.season">Season</span> <span class="required" aria-hidden="true">*</span></label>
               <select id="garmentSeason" name="garmentSeason" required aria-describedby="seasonError" class="select">
                 <option value="">Select season</option>
-                <option value="spring">Spring</option>
-                <option value="summer">Summer</option>
-                <option value="autumn">Autumn</option>
-                <option value="winter">Winter</option>
-                <option value="all_season">All Season</option>
+                <option value="spring" data-i18n="season.spring">Spring</option>
+                <option value="summer" data-i18n="season.summer">Summer</option>
+                <option value="autumn" data-i18n="season.autumn">Autumn</option>
+                <option value="winter" data-i18n="season.winter">Winter</option>
+                <option value="all_season" data-i18n="season.all_season">All Season</option>
               </select>
               <div class="field-error" id="seasonError" aria-live="polite" hidden></div>
             </div>
@@ -174,10 +220,10 @@
 
         <!-- Size & Material Fields -->
         <fieldset class="form-fieldset">
-          <legend class="fieldset-legend">Details</legend>
+          <legend class="fieldset-legend" data-i18n="form.details_legend">Details</legend>
           <div class="form-row">
             <div class="form-field">
-              <label for="garmentSize">Size</label>
+              <label for="garmentSize" data-i18n="form.size">Size</label>
               <input
                 type="text"
                 id="garmentSize"
@@ -205,7 +251,7 @@
               </datalist>
             </div>
             <div class="form-field">
-              <label for="garmentMaterial">Material</label>
+              <label for="garmentMaterial" data-i18n="form.material">Material</label>
               <input
                 type="text"
                 id="garmentMaterial"
@@ -234,22 +280,22 @@
 
         <!-- Color, Pattern & Formality Fields -->
         <fieldset class="form-fieldset">
-          <legend class="fieldset-legend">Style</legend>
+          <legend class="fieldset-legend" data-i18n="form.style_legend">Style</legend>
           <div class="form-row">
             <div class="form-field">
-              <label for="garmentColorName">Color name <span class="required" aria-hidden="true">*</span></label>
+              <label for="garmentColorName"><span data-i18n="form.color_name">Color name</span> <span class="required" aria-hidden="true">*</span></label>
               <input type="text" id="garmentColorName" name="garmentColorName" required maxlength="50" placeholder="e.g., Navy Blue" autocomplete="off" aria-describedby="colorNameError" class="input">
               <div class="field-error" id="colorNameError" aria-live="polite" hidden></div>
             </div>
             <div class="form-field">
-              <label for="garmentColorHex">Color <span class="required" aria-hidden="true">*</span></label>
+              <label for="garmentColorHex"><span data-i18n="form.color">Color</span> <span class="required" aria-hidden="true">*</span></label>
               <input type="color" id="garmentColorHex" name="garmentColorHex" required value="#4a4a4a" aria-describedby="colorHexError" class="input input-color">
               <div class="field-error" id="colorHexError" aria-live="polite" hidden></div>
             </div>
           </div>
           <div class="form-row">
             <div class="form-field">
-              <label for="garmentPattern">Pattern <span class="required" aria-hidden="true">*</span></label>
+              <label for="garmentPattern"><span data-i18n="form.pattern">Pattern</span> <span class="required" aria-hidden="true">*</span></label>
               <select id="garmentPattern" name="garmentPattern" required aria-describedby="patternError" class="select">
                 <option value="solid" selected>Solid</option>
                 <option value="striped">Striped</option>
@@ -265,7 +311,7 @@
               <div class="field-error" id="patternError" aria-live="polite" hidden></div>
             </div>
             <div class="form-field">
-              <label for="garmentFormality">Formality <span class="required" aria-hidden="true">*</span></label>
+              <label for="garmentFormality"><span data-i18n="form.formality">Formality</span> <span class="required" aria-hidden="true">*</span></label>
               <select id="garmentFormality" name="garmentFormality" required aria-describedby="formalityError" class="select">
                 <option value="1" selected>1 - Casual</option>
                 <option value="2">2 - Smart Casual</option>
@@ -280,14 +326,14 @@
 
         <!-- Tags -->
         <fieldset class="form-fieldset">
-          <legend class="fieldset-legend">Tags</legend>
+          <legend class="fieldset-legend" data-i18n="form.tags_legend">Tags</legend>
           <div class="tags-input-row">
             <input type="text" id="garmentTagInput" placeholder="Add a tag and press Enter" autocomplete="off" class="input">
             <button type="button" class="btn btn-secondary" id="suggestTagsBtn">
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                 <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"></path>
               </svg>
-              <span>Suggest with AI</span>
+              <span data-i18n="form.suggest_tags">Suggest with AI</span>
             </button>
           </div>
           <div class="tags-chip-list" id="currentTagsList" aria-label="Current tags"></div>
@@ -300,15 +346,15 @@
 
         <!-- Form Actions -->
         <div class="form-actions">
-          <button type="button" class="btn btn-secondary" id="cancelGarmentBtn" data-modal-cancel>Cancel</button>
+          <button type="button" class="btn btn-secondary" id="cancelGarmentBtn" data-modal-cancel data-i18n="common.cancel">Cancel</button>
           <button type="submit" class="btn btn-primary" id="submitGarmentBtn">
-            <span class="btn-text">Save Garment</span>
+            <span class="btn-text" data-i18n="form.save_garment">Save Garment</span>
             <span class="btn-loading" hidden>
               <svg class="spinner" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                 <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
                 <path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
               </svg>
-              <span>Saving...</span>
+              <span data-i18n="form.saving">Saving...</span>
             </span>
           </button>
         </div>

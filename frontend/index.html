@@ -9,10 +9,14 @@
 <body>
     <main id="mainContent"></main>
 
+    <button id="langToggle" class="lang-toggle" type="button" aria-label="Change language" data-i18n-lang-label>ES</button>
+
     <!-- Toast Container (global) -->
     <div class="toast-container" id="toastContainer" role="region" aria-label="Notifications" aria-live="polite"></div>
 
     <script type="module">
+        import { initI18n, applyTranslations, toggleLanguage } from '/static/js/i18n.js';
+
         // SPA Router
         const routes = {
             '/kiosk': {
@@ -47,6 +51,7 @@
                 // 2. Inject into main content
                 const mainContent = document.getElementById('mainContent');
                 mainContent.innerHTML = html;
+                applyTranslations(mainContent);
 
                 // 3. Dynamic import module
                 const module = await route.load();
@@ -84,9 +89,26 @@
             loadRoute(path);
         }
 
-        // Initial load
+        // Resolve the route to load on first page load: prefer the hash
+        // (in-app navigation always sets one), but if the browser was pointed
+        // directly at a real path like /settings (typed URL, bookmark, reload),
+        // fall back to the pathname so it doesn't silently default to /kiosk.
+        function initialPath() {
+            if (window.location.hash) {
+                return window.location.hash.slice(1) || '/';
+            }
+            const path = window.location.pathname;
+            if (path && routes[path]) {
+                return path;
+            }
+            return '/';
+        }
+
         window.addEventListener('hashchange', handleHashChange);
-        handleHashChange();
+        await initI18n();
+        loadRoute(initialPath());
+
+        document.getElementById('langToggle').addEventListener('click', () => toggleLanguage());
 
         // Expose for debugging
         window.loadRoute = loadRoute;

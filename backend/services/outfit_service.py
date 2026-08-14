@@ -3,11 +3,12 @@
 
 import json
 import random
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
+    GarmentSwapRequest,
     OutfitRecommendationRequest,
     PackingPlanRequest,
     UserFeedbackCreate,
@@ -162,6 +163,175 @@ class OutfitService:
                         outfits.append(outfit)
 
         return outfits
+
+    # ========== PER-GARMENT SWAP (kiosk swipe gesture) ==========
+
+    def swap_garment(self, request: GarmentSwapRequest) -> Outfit:
+        """Swap one item of the current look for the next/previous eligible
+        garment of the same type (stable id ordering, wraps around), then
+        greedily re-picks the best-scoring companions for the other slots
+        so the whole look keeps honoring the active style rules instead of
+        just clashing with the newly swapped piece."""
+        filters = {"season": request.season}
+        all_garments = self.garment_repo.get_all(limit=1000, filters=filters)
+        filtered = self._filter_by_occasion(all_garments, request.occasion, request.formality)
+
+        by_type: dict[str, list[Garment]] = {}
+        for g in filtered:
+            by_type.setdefault(g.type, []).append(g)
+        for garments_of_type in by_type.values():
+            garments_of_type.sort(key=lambda g: g.id)
+
+        current = [g for g in filtered if g.id in request.garment_ids]
+        # Keep any current piece that fell outside the occasion/season filter
+        # (e.g. borderline formality) instead of silently dropping it.
+        missing_ids = set(request.garment_ids) - {g.id for g in current}
+        if missing_ids:
+            current += [g for g in self.garment_repo.get_all(limit=1000) if g.id in missing_ids]
+
+        candidates = by_type.get(request.swap_type, [])
+        if not candidates:
+            raise ValueError(f"No hay más prendas disponibles de tipo '{request.swap_type}'")
+
+        current_of_type = next((g for g in current if g.type == request.swap_type), None)
+        candidate_ids = [c.id for c in candidates]
+        idx = candidate_ids.index(current_of_type.id) if current_of_type and current_of_type.id in candidate_ids else -1
+
+        step = 1 if request.direction == "next" else -1
+        new_garment = candidates[(idx + step) % len(candidates)]
+
+        outfit_garments = [g for g in current if g.type != request.swap_type] + [new_garment]
+
+        active_rules = self.rule_repo.get_all(active_only=True)
+        outfit_garments = self._rebalance(outfit_garments, by_type, active_rules, keep_type=request.swap_type)
+
+        outfit = Outfit(
+            name=f"{request.occasion.title()} Outfit", occasion=request.occasion, season=request.season, score=0.0
+        )
+        outfit._garments = outfit_garments
+        outfit.score = self._calculate_score(outfit, active_rules)
+        outfit.score_breakdown = self._get_score_breakdown(outfit, active_rules)
+        outfit.ai_tips = self._generate_tips(outfit)
+
+        return self._save_outfit(outfit)
+
+    def _rebalance(
+        self,
+        garments: list[Garment],
+        by_type: dict[str, list[Garment]],
+        rules: list[StyleRule],
+        keep_type: str,
+        tries_per_slot: int = 4,
+    ) -> list[Garment]:
+        """Greedily try alternative candidates for every slot except
+        keep_type, keeping whichever swap improves the outfit score - so the
+        rest of the look adapts to the piece that was just swiped instead of
+        clashing with it."""
+        garments = list(garments)
+
+        def score_of(gs: list[Garment]) -> float:
+            tmp = Outfit(name="", occasion="", season="", score=0.0)
+            tmp._garments = gs
+            return self._calculate_score(tmp, rules)
+
+        best_score = score_of(garments)
+
+        for i, g in enumerate(garments):
+            if g.type == keep_type:
+                continue
+            pool = by_type.get(g.type, [])
+            if len(pool) < 2:
+                continue
+            for alt in random.sample(pool, min(tries_per_slot, len(pool))):
+                if alt.id == g.id:
+                    continue
+                trial = list(garments)
+                trial[i] = alt
+                trial_score = score_of(trial)
+                if trial_score > best_score:
+                    garments = trial
+                    best_score = trial_score
+
+        return garments
+
+    # ========== DAILY AUTO-GENERATION (anti-repeat rules) ==========
+
+    def get_or_create_daily_outfit(
+        self, occasion: str, season: str, formality: int | None = None
+    ) -> Outfit:
+        """Today's auto-generated look. Idempotent: returns the existing one
+        if it was already generated (by the nightly scheduler or an earlier
+        call today), otherwise generates and saves it now - so the kiosk
+        always has a 'look of the day' even if the scheduler hasn't fired
+        yet (e.g. right after a restart)."""
+        today = date.today().isoformat()
+        existing = self.outfit_repo.get_daily_by_date(today)
+        if existing:
+            existing.items = self.item_repo.get_by_outfit(existing.id)
+            return existing
+        return self._generate_daily_outfit(today, occasion, season, formality)
+
+    def _generate_daily_outfit(
+        self, today: str, occasion: str, season: str, formality: int | None
+    ) -> Outfit:
+        """Builds and saves the look for `today`, honoring:
+        - no top repeated within the last 7 days
+        - no bottom/outerwear repeated on 2 consecutive days
+        Falls back to the unfiltered pool for a slot if the exclusion would
+        leave it empty, so a small wardrobe never blocks generation."""
+        garments = self.garment_repo.get_all(limit=1000, filters={"season": season})
+        filtered = self._filter_by_occasion(garments, occasion, formality)
+        if len(filtered) < 2:
+            raise ValueError("No hay prendas suficientes para generar el look del día")
+
+        week_ago = (date.today() - timedelta(days=7)).isoformat()
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        recent_daily = self.outfit_repo.get_recent_daily(week_ago)
+
+        recent_top_ids: set[int] = set()
+        recent_bottom_ids: set[int] = set()
+        for past_outfit in recent_daily:
+            for item in self.item_repo.get_by_outfit(past_outfit.id):
+                garment = self.garment_repo.get_by_id(item.garment_id)
+                if not garment:
+                    continue
+                if garment.type == "top":
+                    recent_top_ids.add(garment.id)
+                elif garment.type in ("bottom", "outerwear") and past_outfit.for_date == yesterday:
+                    recent_bottom_ids.add(garment.id)
+
+        def without_excluded(pool: list[Garment], excluded: set[int]) -> list[Garment]:
+            remaining = [g for g in pool if g.id not in excluded]
+            return remaining if remaining else pool
+
+        by_type: dict[str, list[Garment]] = {}
+        for g in filtered:
+            by_type.setdefault(g.type, []).append(g)
+
+        if "top" in by_type:
+            by_type["top"] = without_excluded(by_type["top"], recent_top_ids)
+        for slot in ("bottom", "outerwear"):
+            if slot in by_type:
+                by_type[slot] = without_excluded(by_type[slot], recent_bottom_ids)
+
+        eligible_pool = [g for garments_of_type in by_type.values() for g in garments_of_type]
+        if len(eligible_pool) < 2:
+            eligible_pool = filtered
+
+        outfits = self._generate_combinations(eligible_pool, occasion, season, top_n=1)
+        if not outfits:
+            raise ValueError("No hay prendas suficientes para generar el look del día")
+
+        active_rules = self.rule_repo.get_all(active_only=True)
+        outfit = outfits[0]
+        outfit.score = self._calculate_score(outfit, active_rules)
+        outfit.score_breakdown = self._get_score_breakdown(outfit, active_rules)
+        outfit.ai_tips = self._generate_tips(outfit)
+        outfit.is_daily = True
+        outfit.for_date = today
+        outfit.name = f"Look del día · {today}"
+
+        return self._save_outfit(outfit)
 
     def _calculate_score(self, outfit: Outfit, rules: list[StyleRule]) -> float:
         """Calculate outfit score based on style rules"""

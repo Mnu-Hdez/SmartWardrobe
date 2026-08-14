@@ -64,7 +64,7 @@ class ApiClient {
                 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
-                    throw new ApiError(response.status, errorData.detail || 'Error desconocido');
+                    throw new ApiError(response.status, extractErrorMessage(errorData));
                 }
                 
                 // Handle 204 No Content
@@ -144,6 +144,16 @@ class ApiClient {
             body: JSON.stringify(data)
         });
     }
+
+    async analyzeImage(file) {
+        const formData = new FormData();
+        formData.set('image', file);
+        return this.request('/garments/analyze-image', {
+            method: 'POST',
+            body: formData,
+            headers: {}
+        });
+    }
     
     // ========== OUTFITS ==========
     
@@ -178,6 +188,17 @@ class ApiClient {
     
     async recommendOutfits(request) {
         return this.request('/recommend/outfits', {
+            method: 'POST',
+            body: JSON.stringify(request)
+        });
+    }
+    
+    async getDailyOutfit() {
+        return this.request('/recommend/daily');
+    }
+    
+    async swapGarment(request) {
+        return this.request('/recommend/swap-garment', {
             method: 'POST',
             body: JSON.stringify(request)
         });
@@ -256,6 +277,40 @@ class ApiClient {
     async healthCheck() {
         return this.request('/health');
     }
+
+    async getAIConfig() {
+        return this.request('/config/ai');
+    }
+
+    async updateAIConfig(data) {
+        return this.request('/config/ai', {
+            method: 'PATCH',
+            body: JSON.stringify(data)
+        });
+    }
+}
+
+/**
+ * FastAPI validation errors (422) return `detail` as an array of
+ * { loc, msg, type } objects rather than a string — stringifying that
+ * array directly produces "[object Object],[object Object],...". Extract
+ * a readable message in every shape `detail` can take.
+ */
+function extractErrorMessage(errorData) {
+    const detail = errorData?.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+        return detail
+            .map(e => {
+                if (typeof e === 'string') return e;
+                const field = Array.isArray(e?.loc) ? e.loc[e.loc.length - 1] : e?.loc;
+                return field ? `${field}: ${e.msg}` : e?.msg;
+            })
+            .filter(Boolean)
+            .join('; ') || 'Error de validación';
+    }
+    if (detail && typeof detail === 'object') return detail.msg || JSON.stringify(detail);
+    return 'Error desconocido';
 }
 
 /**

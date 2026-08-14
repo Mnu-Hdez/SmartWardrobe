@@ -118,6 +118,45 @@ class TagSuggestionRequest(BaseModel):
 class TagSuggestionResponse(BaseModel):
     suggested_tags: list[str]
     provider: str
+
+
+# ========== IMAGE ANALYSIS (AUTO-FILL) SCHEMAS ==========
+
+
+class ImageAnalysisResponse(BaseModel):
+    """Best-effort field guesses extracted from a garment photo by the
+    configured AI provider. Every field is optional — the frontend only
+    pre-fills inputs that came back non-empty, and the user reviews/edits
+    everything before saving, same pattern as tag suggestions."""
+
+    name: str | None = None
+    type: str | None = None
+    color_name: str | None = None
+    color_hex: str | None = None
+    material: str | None = None
+    pattern: str | None = None
+    formality: int | None = None
+    tags: list[str] = Field(default_factory=list)
+    provider: str
+
+
+class AIConfigUpdate(BaseModel):
+    """Applied in-memory to the running process (AIProviderFactory cache is
+    cleared right after) — takes effect immediately, but does NOT persist
+    across a container restart, since docker-compose's `environment:` list
+    re-injects whatever is in .env/compose on the next `up`. To make a
+    provider/key permanent, set it in docker-compose.yml or .env instead."""
+
+    provider: str = Field(..., pattern=r"^(local|nim|gemini)$")
+    nim_api_key: str | None = None
+    gemini_api_key: str | None = None
+
+
+class AIConfigResponse(BaseModel):
+    provider: str
+    nim_configured: bool
+    gemini_configured: bool
+    persisted: bool = False
 # ========== OUTFIT SCHEMAS ==========
 
 
@@ -182,6 +221,35 @@ class OutfitRecommendationResponse(BaseModel):
     outfits: list[OutfitResponse]
     total_garments_analyzed: int
     processing_time_ms: float
+
+
+class GarmentSwapRequest(BaseModel):
+    """Swap one garment of an existing look for the next/previous one of the
+    same type (kiosk per-garment swipe gesture). The rest of the look is
+    re-balanced against the active style rules so it keeps making sense
+    together instead of just replacing one piece in isolation."""
+
+    occasion: str
+    season: str = Season.ALL_SEASON
+    formality: int | None = Field(None, ge=1, le=5)
+    garment_ids: list[int] = Field(..., min_length=1)
+    swap_type: str = Field(..., description="Garment type to swap, e.g. 'top'")
+    direction: str = Field(..., pattern=r"^(next|prev)$")
+
+
+class DailyOutfitConfig(BaseModel):
+    """Persisted defaults used by the nightly auto-generation job (and by
+    GET /recommend/daily when it has to generate on demand because the
+    scheduler hasn't run yet today)."""
+
+    occasion: str = "casual"
+    season: str = Season.ALL_SEASON
+    formality: int | None = Field(None, ge=1, le=5)
+    enabled: bool = True
+
+
+class DailyOutfitConfigResponse(DailyOutfitConfig):
+    pass
 
 
 # ========== FEEDBACK SCHEMAS ==========

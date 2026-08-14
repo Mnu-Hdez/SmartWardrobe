@@ -261,6 +261,47 @@ class LocalRulesProvider:
 
         return suggestions[:8]
 
+    def analyze_image(self, image_bytes: bytes, mime_type: str) -> dict:
+        """No-AI fallback: extract the dominant color from the photo via
+        colorthief (already a project dependency) so auto-fill still gives
+        the user *something* to review even with AI_PROVIDER=local. Cannot
+        guess name/type/material/pattern without a vision model, so those
+        stay null and the user fills them manually."""
+        empty = {
+            "name": None, "type": None, "color_name": None, "color_hex": None,
+            "material": None, "pattern": None, "formality": None, "tags": [],
+        }
+        try:
+            from io import BytesIO
+
+            from colorthief import ColorThief
+
+            color_thief = ColorThief(BytesIO(image_bytes))
+            r, g, b = color_thief.get_color(quality=1)
+            hex_color = f"#{r:02x}{g:02x}{b:02x}"
+            result = dict(empty)
+            result["color_hex"] = hex_color
+            result["color_name"] = self._nearest_color_name(r, g, b)
+            return result
+        except Exception:
+            return empty
+
+    def _nearest_color_name(self, r: int, g: int, b: int) -> str:
+        palette = {
+            "Black": (0, 0, 0), "White": (255, 255, 255), "Gray": (128, 128, 128),
+            "Navy": (0, 0, 128), "Blue": (30, 60, 200), "Light Blue": (120, 170, 230),
+            "Red": (200, 30, 30), "Maroon": (128, 0, 0), "Pink": (230, 130, 170),
+            "Orange": (230, 120, 30), "Yellow": (230, 210, 50), "Beige": (220, 200, 170),
+            "Brown": (120, 80, 50), "Green": (40, 130, 60), "Olive": (110, 120, 40),
+            "Purple": (120, 50, 150), "Khaki": (180, 170, 120),
+        }
+        best_name, best_dist = "Gray", float("inf")
+        for name, (pr, pg, pb) in palette.items():
+            dist = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2
+            if dist < best_dist:
+                best_dist, best_name = dist, name
+        return best_name
+
     def _select_daily_outfit(self, garments: list[Garment], occasion: str) -> list[Garment]:
         import random
 
