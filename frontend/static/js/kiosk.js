@@ -355,8 +355,13 @@ class KioskUI {
                 <div class="outfit-garments">
         `;
 
-        if (outfit.garments && outfit.garments.length > 0) {
-            outfit.garments.forEach(garment => {
+        // OutfitResponse doesn't have a flat `garments` array - each garment
+        // is nested at item.garment inside outfit.items (same shape the
+        // swipe-swap handler below already relies on for garment_id).
+        if (outfit.items && outfit.items.length > 0) {
+            outfit.items.forEach(item => {
+                const garment = item.garment;
+                if (!garment) return;
                 const colorHex = garment.color_hex || '#666666';
                 // Use raw_image_path for high-quality display - serve via /images/raw/
                 const imageUrl = garment.raw_image_path
@@ -788,19 +793,23 @@ class KioskUI {
 
     async loadStats() {
         try {
-            const [garments, outfits] = await Promise.all([
-                api.getGarments({ limit: 1000 }).catch(() => []),
-                api.getOutfits({ limit: 1000 }).catch(() => [])
+            // Both list endpoints are paginated ({ garments/outfits, total, ... }),
+            // not bare arrays - read .total for the counts instead of .length,
+            // and only pull the full outfits page when we need the scores.
+            const [garmentsResp, outfitsResp] = await Promise.all([
+                api.getGarments({ page_size: 1 }).catch(() => ({ total: 0 })),
+                api.getOutfits({ page_size: 100 }).catch(() => ({ total: 0, outfits: [] }))
             ]);
+            const outfits = Array.isArray(outfitsResp.outfits) ? outfitsResp.outfits : [];
 
             this.state.stats = {
-                totalGarments: Array.isArray(garments) ? garments.length : 0,
-                totalOutfits: Array.isArray(outfits) ? outfits.length : 0,
+                totalGarments: garmentsResp.total || 0,
+                totalOutfits: outfitsResp.total || 0,
                 avgScore: 0,
                 favorites: 0
             };
 
-            if (Array.isArray(outfits) && outfits.length > 0) {
+            if (outfits.length > 0) {
                 const scores = outfits.map(o => o.score || 0).filter(s => s > 0);
                 this.state.stats.avgScore = scores.length > 0
                     ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
@@ -973,8 +982,10 @@ class KioskUI {
         `;
 
         try {
-            const garments = await api.getGarments({ limit: 1000 });
-            if (Array.isArray(garments) && garments.length > 0) {
+            // getGarments() returns { garments, total, ... }, not a bare array -
+            // getAllGarments() unwraps it and walks every page.
+            const garments = await api.getAllGarments();
+            if (garments.length > 0) {
                 grid.innerHTML = garments.map(garment => this.createWardrobeCard(garment)).join('');
             } else {
                 grid.innerHTML = `

@@ -107,6 +107,30 @@ class ApiClient {
         const query = new URLSearchParams(params).toString();
         return this.request(`/garments${query ? `?${query}` : ''}`);
     }
+
+    /**
+     * GET /garments is paginated (returns { garments, total, page, page_size },
+     * not a bare array), and page_size is capped at 100 server-side. This
+     * loops through every page and returns the flat list, for callers that
+     * need the whole wardrobe (settings grid, kiosk wardrobe modal, stats).
+     */
+    async getAllGarments() {
+        const pageSize = 100;
+        let page = 1;
+        let all = [];
+        let total = Infinity;
+
+        while (all.length < total) {
+            const response = await this.getGarments({ page, page_size: pageSize });
+            const garments = Array.isArray(response?.garments) ? response.garments : [];
+            all = all.concat(garments);
+            total = typeof response?.total === 'number' ? response.total : all.length;
+            if (garments.length === 0) break; // safety net against infinite loop
+            page += 1;
+        }
+
+        return all;
+    }
     
     async getGarment(id) {
         return this.request(`/garments/${id}`);

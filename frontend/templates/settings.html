@@ -283,17 +283,11 @@
           <legend class="fieldset-legend" data-i18n="form.style_legend">Style</legend>
           <div class="form-row">
             <div class="form-field">
-              <label for="garmentColorName"><span data-i18n="form.color_name">Color name</span> <span class="required" aria-hidden="true">*</span></label>
-              <input type="text" id="garmentColorName" name="garmentColorName" required maxlength="50" placeholder="e.g., Navy Blue" autocomplete="off" aria-describedby="colorNameError" class="input">
+              <label for="garmentColorName"><span data-i18n="form.color">Color</span> <span class="required" aria-hidden="true">*</span></label>
+              <input type="text" id="garmentColorName" name="garmentColorName" required maxlength="50" placeholder="e.g., Blanco roto" autocomplete="off" list="colorSuggestions" aria-describedby="colorNameError" class="input">
+              <datalist id="colorSuggestions"></datalist>
               <div class="field-error" id="colorNameError" aria-live="polite" hidden></div>
             </div>
-            <div class="form-field">
-              <label for="garmentColorHex"><span data-i18n="form.color">Color</span> <span class="required" aria-hidden="true">*</span></label>
-              <input type="color" id="garmentColorHex" name="garmentColorHex" required value="#4a4a4a" aria-describedby="colorHexError" class="input input-color">
-              <div class="field-error" id="colorHexError" aria-live="polite" hidden></div>
-            </div>
-          </div>
-          <div class="form-row">
             <div class="form-field">
               <label for="garmentPattern"><span data-i18n="form.pattern">Pattern</span> <span class="required" aria-hidden="true">*</span></label>
               <select id="garmentPattern" name="garmentPattern" required aria-describedby="patternError" class="select">
@@ -310,6 +304,8 @@
               </select>
               <div class="field-error" id="patternError" aria-live="polite" hidden></div>
             </div>
+          </div>
+          <div class="form-row">
             <div class="form-field">
               <label for="garmentFormality"><span data-i18n="form.formality">Formality</span> <span class="required" aria-hidden="true">*</span></label>
               <select id="garmentFormality" name="garmentFormality" required aria-describedby="formalityError" class="select">
@@ -321,7 +317,9 @@
               </select>
               <div class="field-error" id="formalityError" aria-live="polite" hidden></div>
             </div>
+            <div class="form-field"></div>
           </div>
+          <input type="hidden" id="garmentColorHex" name="garmentColorHex" value="#4a4a4a">
         </fieldset>
 
         <!-- Tags -->

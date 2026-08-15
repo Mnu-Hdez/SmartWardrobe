@@ -2,6 +2,8 @@
 // Admin panel for /settings route - CRUD operations, bulk actions, configuration
 
 import { api } from './api.js';
+import { getLanguage } from './i18n.js';
+import { getColorPalette, getHexForColorName } from './colors.js';
 import {
     formatType, formatPattern, formatFormality, escapeHtml,
     showToast, openModal, closeModal, prefersReducedMotion, debounce
@@ -37,6 +39,7 @@ class SettingsUI {
     async init() {
         this.cacheElements();
         this.bindEvents();
+        this.populateColorSuggestions();
         await this.loadGarments();
         this.loadSystemStatus();
     }
@@ -69,6 +72,7 @@ class SettingsUI {
         // Style & Tags fields
         this.elements.garmentColorName = document.getElementById('garmentColorName');
         this.elements.garmentColorHex = document.getElementById('garmentColorHex');
+        this.elements.colorSuggestions = document.getElementById('colorSuggestions');
         this.elements.garmentPattern = document.getElementById('garmentPattern');
         this.elements.garmentFormality = document.getElementById('garmentFormality');
         this.elements.garmentTagInput = document.getElementById('garmentTagInput');
@@ -162,6 +166,13 @@ class SettingsUI {
             this.elements.suggestTagsBtn.addEventListener('click', () => this.suggestTagsWithAI());
         }
 
+        // Color name -> auto-derive the hidden color_hex swatch, and
+        // refresh the tone suggestions if the app language changes
+        if (this.elements.garmentColorName) {
+            this.elements.garmentColorName.addEventListener('input', () => this.updateColorHexFromName());
+        }
+        document.addEventListener('i18n:changed', () => this.populateColorSuggestions());
+
         // Bulk actions
         if (this.elements.selectAllCheckbox) {
             this.elements.selectAllCheckbox.addEventListener('change', (e) => this.toggleSelectAll(e.target.checked));
@@ -235,8 +246,10 @@ class SettingsUI {
         this.showGridLoading();
 
         try {
-            const garments = await api.getGarments({ limit: 1000 });
-            this.state.garments = Array.isArray(garments) ? garments : [];
+            // getGarments() returns the paginated shape { garments, total, ... },
+            // not a bare array - getAllGarments() unwraps it and walks every
+            // page so nothing (including a garment just created) is missed.
+            this.state.garments = await api.getAllGarments();
             this.applyFilters();
         } catch (error) {
             console.error('Error loading garments:', error);
@@ -301,17 +314,17 @@ class SettingsUI {
         return `
             <article class="wardrobe-item ${isSelected ? 'selected' : ''}" data-garment-id="${garment.id}">
                 <div class="wardrobe-item-checkbox">
-                    <input type="checkbox" class="item-checkbox" data-garment-id="${garment.id}" ${isSelected ? 'checked' : ''} aria-label="Select ${this.escapeHtml(garment.name)}">
+                    <input type="checkbox" class="item-checkbox" data-garment-id="${garment.id}" ${isSelected ? 'checked' : ''} aria-label="Select ${escapeHtml(garment.name)}">
                 </div>
                 ${imageUrl
-                    ? `<img class="wardrobe-item-image" src="${imageUrl}" alt="${this.escapeHtml(garment.name)}" loading="lazy">`
+                    ? `<img class="wardrobe-item-image" src="${imageUrl}" alt="${escapeHtml(garment.name)}" loading="lazy">`
                     : `<div class="wardrobe-item-image" style="background-color: ${colorHex};"></div>`
                 }
                 <div class="wardrobe-item-info">
-                    <h4 class="wardrobe-item-name">${this.escapeHtml(garment.name)}</h4>
+                    <h4 class="wardrobe-item-name">${escapeHtml(garment.name)}</h4>
                     <div class="wardrobe-item-meta">
                         <span class="tag tag-type">${formatType(garment.type)}</span>
-                        <span class="tag tag-color" style="--tag-color: ${colorHex}">${this.escapeHtml(garment.color_name)}</span>
+                        <span class="tag tag-color" style="--tag-color: ${colorHex}">${escapeHtml(garment.color_name)}</span>
                         <span class="tag">${formatPattern(garment.pattern)}</span>
                         <span class="tag">${formatFormality(garment.formality)}</span>
                     </div>
@@ -704,6 +717,33 @@ class SettingsUI {
         }
     }
 
+    // ========== COLOR ==========
+
+    /**
+     * Fills the <datalist> backing the Color field with tone suggestions
+     * for the current app language (e.g. typing "blanco" surfaces "Blanco
+     * roto", "Blanco cáscara de huevo"...). Re-run when the language toggles.
+     */
+    populateColorSuggestions() {
+        const datalist = this.elements.colorSuggestions;
+        if (!datalist) return;
+        const palette = getColorPalette(getLanguage());
+        datalist.innerHTML = palette.map(c => `<option value="${escapeHtml(c.name)}"></option>`).join('');
+    }
+
+    /**
+     * There's no more RGB/color picker in the UI, but the backend still
+     * requires a valid color_hex. Derive it automatically from whatever
+     * the user types in the Color field (falls back to a neutral gray for
+     * names outside the known palette).
+     */
+    updateColorHexFromName() {
+        const nameInput = this.elements.garmentColorName;
+        const hexInput = this.elements.garmentColorHex;
+        if (!nameInput || !hexInput) return;
+        hexInput.value = getHexForColorName(nameInput.value, getLanguage());
+    }
+
     // ========== SYSTEM CONFIGURATION ==========
 
     async autoFillFromImage() {
@@ -913,7 +953,7 @@ class SettingsUI {
                         <line x1="9" y1="9" x2="15" y2="15"></line>
                     </svg>
                     <h3 style="margin-bottom: 8px; color: var(--text-secondary);">Error loading</h3>
-                    <p>${this.escapeHtml(message)}</p>
+                    <p>${escapeHtml(message)}</p>
                     <button class="btn btn-primary" onclick="settingsUI.loadGarments()" style="margin-top: 16px;">Retry</button>
                 </div>
             `;
