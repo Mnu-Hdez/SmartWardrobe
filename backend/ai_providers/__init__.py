@@ -1,79 +1,40 @@
 # backend/ai_providers/__init__.py
-"""AI Provider Protocol and Factory.
+"""AI Provider Protocol.
 
-Uses Protocol for structural subtyping (duck typing) instead of ABC inheritance.
-This allows any class with the right methods to be used as an AI provider
-without inheritance — the "lazy" Ponytail way.
+Uses Protocol for structural subtyping (duck typing) instead of ABC
+inheritance - any class with the right shape can be used as an AI provider
+without inheriting from anything.
+
+This reflects the interface the providers (LocalRulesProvider,
+NVIDIANIMProvider, GeminiProvider) actually implement and that
+backend/api/routers/wardrobe.py actually calls: `suggest_tags` (tag
+suggestions for the add-garment form) and `analyze_image` (auto-fill from
+photo). Provider instantiation lives in backend/ai_providers/factory.py.
 """
 
-from typing import Any, Protocol
-
-from backend.models.schemas import GarmentRead, OutfitRead
+from typing import Protocol
 
 
 class AIProviderProtocol(Protocol):
-    """Protocol for AI providers — structural subtyping (duck typing)."""
+    """Structural interface every AI provider (local/nim/gemini) satisfies."""
 
-    async def enhance_recommendation(
+    name: str
+
+    def suggest_tags(
         self,
-        outfit: OutfitRead,
-        context: str = "",
-        user_preferences: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Enhance an outfit recommendation with AI-generated content.
-
-        Returns:
-            Dict with keys: enhanced_description, style_tips, confidence
-        """
+        name: str,
+        garment_type: str,
+        color_name: str | None = None,
+        material: str | None = None,
+        pattern: str | None = None,
+        brand: str | None = None,
+        season: str | None = None,
+        existing_tags: list[str] | None = None,
+    ) -> list[str]:
+        """Suggest up to a handful of short lowercase tags for a garment."""
         ...
 
-    async def generate_outfit_description(
-        self, garments: list[GarmentRead], occasion: str, context: str = ""
-    ) -> str:
-        """Generate a natural language description for an outfit."""
+    def analyze_image(self, image_bytes: bytes, mime_type: str) -> dict:
+        """Best-effort field guesses from a garment photo, shaped like
+        ImageAnalysisResponse (minus `provider`)."""
         ...
-
-    def get_provider_name(self) -> str:
-        """Return the provider name."""
-        ...
-
-    async def health_check(self) -> bool:
-        """Check if the provider is available."""
-        ...
-
-
-class AIProviderFactory:
-    """Factory for creating AI provider instances."""
-
-    _instance: Any = None
-    _provider_type: str | None = None
-
-    @classmethod
-    def create(
-        cls, provider_type: str | None = None, config: dict[str, Any] | None = None
-    ) -> AIProviderProtocol:
-        if provider_type is None:
-            from backend.core.config import get_settings
-
-            settings = get_settings()
-            provider_type = settings.ai_provider
-
-        if cls._instance and cls._provider_type == provider_type:
-            return cls._instance
-
-        if provider_type == "nim":
-            from backend.ai_providers.nim import NVIDIANIMProvider
-
-            cls._instance = NVIDIANIMProvider(config)
-        else:
-            from backend.ai_providers.local import LocalRulesProvider
-
-            cls._instance = LocalRulesProvider(config)
-
-        cls._provider_type = provider_type
-        return cls._instance
-
-    @classmethod
-    def reset(cls):
-        cls._instance = None
-        cls._provider_type = None

@@ -25,6 +25,27 @@ class CLIPClassifier:
 
     TYPE_LABELS = ["top", "bottom", "dress", "outerwear", "shoes", "accessory"]
 
+    # Pattern prompts - labels match backend.models.garment.Pattern exactly,
+    # so classify()'s output can be written straight into a Garment without
+    # any translation layer.
+    PATTERN_PROMPTS = [
+        "a solid, plain, single-color garment with no pattern",
+        "a striped garment with parallel lines",
+        "a checked or plaid garment with a grid pattern",
+        "a floral garment with a flower print",
+        "a garment with a polka dot pattern",
+        "a garment with a geometric pattern",
+        "a garment with an abstract print pattern",
+        "a garment with an animal print pattern like leopard or zebra stripes",
+        "a garment with a paisley pattern",
+        "a garment with a houndstooth pattern",
+    ]
+
+    PATTERN_LABELS = [
+        "solid", "striped", "checked", "floral", "polka_dot",
+        "geometric", "abstract", "animal_print", "paisley", "houndstooth",
+    ]
+
     # Formality prompts
     FORMALITY_PROMPTS = [
         "casual everyday clothing",
@@ -46,6 +67,7 @@ class CLIPClassifier:
         self.preprocess = None
         self.tokenizer = None
         self.type_text_features = None
+        self.pattern_text_features = None
         self.formality_text_features = None
 
     def load(self):
@@ -62,6 +84,10 @@ class CLIPClassifier:
                 type_tokens = self.tokenizer(self.TYPE_PROMPTS).to(self.device)
                 self.type_text_features = self.model.encode_text(type_tokens)
                 self.type_text_features /= self.type_text_features.norm(dim=-1, keepdim=True)
+
+                pattern_tokens = self.tokenizer(self.PATTERN_PROMPTS).to(self.device)
+                self.pattern_text_features = self.model.encode_text(pattern_tokens)
+                self.pattern_text_features /= self.pattern_text_features.norm(dim=-1, keepdim=True)
 
                 formality_tokens = self.tokenizer(self.FORMALITY_PROMPTS).to(self.device)
                 self.formality_text_features = self.model.encode_text(formality_tokens)
@@ -100,6 +126,29 @@ class CLIPClassifier:
             },
         }
 
+    def classify_pattern(self, image: Image.Image) -> dict[str, any]:
+        """Classify garment pattern (solid, striped, checked, ...)"""
+        if self.model is None:
+            self.load()
+
+        image_tensor = self.preprocess(image).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            image_features = self.model.encode_image(image_tensor)
+            image_features /= image_features.norm(dim=-1, keepdim=True)
+
+            similarity = (100.0 * image_features @ self.pattern_text_features.T).softmax(dim=-1)
+            probs = similarity[0].cpu().numpy()
+
+        best_idx = probs.argmax()
+        return {
+            "pattern": self.PATTERN_LABELS[best_idx],
+            "confidence": float(probs[best_idx]),
+            "all_scores": {
+                self.PATTERN_LABELS[i]: float(probs[i]) for i in range(len(self.PATTERN_LABELS))
+            },
+        }
+
     def classify_formality(self, image: Image.Image) -> dict[str, any]:
         """Classify garment formality level (1-5)"""
         if self.model is None:
@@ -124,12 +173,15 @@ class CLIPClassifier:
         }
 
     def classify(self, image: Image.Image) -> dict[str, any]:
-        """Classify both type and formality"""
+        """Classify type, pattern and formality in one call"""
         type_result = self.classify_type(image)
+        pattern_result = self.classify_pattern(image)
         formality_result = self.classify_formality(image)
         return {
             "type": type_result["type"],
             "type_confidence": type_result["confidence"],
+            "pattern": pattern_result["pattern"],
+            "pattern_confidence": pattern_result["confidence"],
             "formality": formality_result["formality"],
             "formality_confidence": formality_result["confidence"],
         }

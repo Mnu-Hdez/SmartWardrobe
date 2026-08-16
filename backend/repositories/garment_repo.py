@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import and_, or_
 from sqlmodel import Session, delete, func, select
 
-from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
+from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule, UserFeedback
 from backend.models.schemas import (
     GarmentUpdate,
     StyleRuleUpdate,
@@ -18,6 +18,28 @@ class GarmentRepository:
 
     def __init__(self, session: Session):
         self.session = session
+
+    @staticmethod
+    def _build_filter_conditions(filters: dict[str, Any]):
+        """Shared WHERE-clause builder for get_all()/count() - a new filter
+        key only needs one new branch here, not one in each method."""
+        conditions = []
+        if filters.get("search"):
+            search = f"%{filters['search'].lower()}%"
+            conditions.append(
+                or_(
+                    Garment.name.ilike(search),
+                    Garment.color_name.ilike(search),
+                    Garment.brand.ilike(search),
+                )
+            )
+        if filters.get("type"):
+            conditions.append(Garment.type == filters["type"])
+        if filters.get("season"):
+            conditions.append(
+                or_(Garment.season == filters["season"], Garment.season == "all_season")
+            )
+        return conditions
 
     def create(self, garment: Garment) -> Garment:
         self.session.add(garment)
@@ -34,22 +56,7 @@ class GarmentRepository:
         query = select(Garment).order_by(Garment.created_at.desc())
 
         if filters:
-            conditions = []
-            if filters.get("search"):
-                search = f"%{filters['search'].lower()}%"
-                conditions.append(
-                    or_(
-                        Garment.name.ilike(search),
-                        Garment.color_name.ilike(search),
-                        Garment.brand.ilike(search),
-                    )
-                )
-            if filters.get("type"):
-                conditions.append(Garment.type == filters["type"])
-            if filters.get("season"):
-                conditions.append(
-                    or_(Garment.season == filters["season"], Garment.season == "all_season")
-                )
+            conditions = self._build_filter_conditions(filters)
             if conditions:
                 query = query.where(and_(*conditions))
 
@@ -60,22 +67,7 @@ class GarmentRepository:
         query = select(func.count(Garment.id))
 
         if filters:
-            conditions = []
-            if filters.get("search"):
-                search = f"%{filters['search'].lower()}%"
-                conditions.append(
-                    or_(
-                        Garment.name.ilike(search),
-                        Garment.color_name.ilike(search),
-                        Garment.brand.ilike(search),
-                    )
-                )
-            if filters.get("type"):
-                conditions.append(Garment.type == filters["type"])
-            if filters.get("season"):
-                conditions.append(
-                    or_(Garment.season == filters["season"], Garment.season == "all_season")
-                )
+            conditions = self._build_filter_conditions(filters)
             if conditions:
                 query = query.where(and_(*conditions))
 
@@ -103,6 +95,13 @@ class GarmentRepository:
         garment = self.get_by_id(garment_id)
         if not garment:
             return False
+        # OutfitItem.garment_id and UserFeedback.garment_id are both real FKs
+        # to garment.id, and a garment is very likely already referenced by
+        # a generated outfit (daily auto-generation runs on every startup) -
+        # deleting it directly trips a FOREIGN KEY constraint failure (500).
+        # Clean up the dependents first so deletion always succeeds.
+        self.session.exec(delete(OutfitItem).where(OutfitItem.garment_id == garment_id))
+        self.session.exec(delete(UserFeedback).where(UserFeedback.garment_id == garment_id))
         self.session.delete(garment)
         self.session.commit()
         return True
@@ -110,6 +109,9 @@ class GarmentRepository:
     def bulk_delete(self, garment_ids: list[int]) -> int:
         if not garment_ids:
             return 0
+        # Same FK cleanup as delete() above, batched for the whole id list.
+        self.session.exec(delete(OutfitItem).where(OutfitItem.garment_id.in_(garment_ids)))
+        self.session.exec(delete(UserFeedback).where(UserFeedback.garment_id.in_(garment_ids)))
         statement = delete(Garment).where(Garment.id.in_(garment_ids))
         result = self.session.exec(statement)
         self.session.commit()

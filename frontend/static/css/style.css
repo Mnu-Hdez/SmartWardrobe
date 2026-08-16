@@ -266,6 +266,15 @@ h1, h2, h3, h4, .eyebrow, .stat-value {
   background: var(--surface-elevated);
 }
 
+.btn-danger {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: 0 0 24px -4px var(--accent-glow);
+}
+
 .btn-icon {
   padding: 0.625rem;
   border-radius: var(--radius-full);
@@ -613,6 +622,14 @@ h1, h2, h3, h4, .eyebrow, .stat-value {
 .garment-card:hover .garment-actions {
   opacity: 1;
   transform: translateX(0);
+}
+/* Touch devices have no persistent :hover, so hover-only reveal makes
+   these controls invisible on tablets/phones - keep them visible there. */
+@media (hover: none) {
+  .wardrobe-item-actions {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .item-action-btn {
@@ -1140,6 +1157,65 @@ h1, h2, h3, h4, .eyebrow, .stat-value {
   gap: 1rem;
 }
 .section-header h2 { font-size: 1.25rem; font-weight: 600; }
+
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.select-all-label input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  appearance: none;
+  background: var(--surface-elevated);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--dur-fast);
+}
+.select-all-label input[type="checkbox"]:checked,
+.select-all-label input[type="checkbox"]:indeterminate {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.select-all-label input[type="checkbox"]:checked::after {
+  content: '✓';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 1.25rem;
+  margin-bottom: 20px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  animation: slideUp var(--dur-base) var(--ease-spring);
+}
+.bulk-actions-count {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
 
 .garments-grid { grid-auto-flow: dense; }
 

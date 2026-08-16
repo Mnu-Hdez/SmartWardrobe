@@ -1,15 +1,18 @@
 # Smart Wardrobe - API Router
 # Wardrobe CRUD endpoints
 
+import logging
 import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
 from backend.core.auth import require_api_key
 from backend.core.config import read_daily_config, settings
-from backend.ai_providers.factory import AIProviderFactory
+from backend.ai_providers import AIProviderProtocol
+from backend.ai_providers.factory import get_ai_provider
 from backend.database.connection import get_session
 from backend.models.garment import Garment, Outfit, OutfitItem, StyleRule
 from backend.models.schemas import (
@@ -48,6 +51,8 @@ from backend.repositories.garment_repo import (
     StyleRuleRepository,
 )
 from backend.services.outfit_service import OutfitService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/garments", tags=["Garments"])
 
@@ -142,11 +147,22 @@ async def create_garment(
     with open(raw_path, "wb") as f:
         f.write(raw_bytes)
 
-    # TODO: Process with SAM to create mask (processed image)
-    # For now, copy raw as processed
-    processed_filename = f"{uuid.uuid4()}.png"
-    processed_path = settings.IMAGES_PROCESSED_GARMENTS_DIR / processed_filename
-    shutil.copy2(raw_path, processed_path)
+    # Background-removed "processed" image via the local SAM segmentation
+    # pipeline. Best-effort: segmentation is expensive and its weights may
+    # not be downloaded yet, so any failure falls back to the raw photo
+    # (previous behavior) instead of blocking the upload.
+    try:
+        from backend.vision.ingestion_pipeline import IngestionPipeline
+
+        with Image.open(BytesIO(raw_bytes)) as pil_image:
+            processed_filename = IngestionPipeline().segment_and_save(pil_image.convert("RGB"))
+    except Exception as e:
+        logger.warning(
+            f"Segmentation unavailable ({e}), using raw image as processed image"
+        )
+        processed_filename = f"{uuid.uuid4()}.png"
+        processed_path = settings.IMAGES_PROCESSED_GARMENTS_DIR / processed_filename
+        shutil.copy2(raw_path, processed_path)
 
     # Tags arrive as a JSON-encoded array string via multipart form (arrays
     # aren't natively supported in multipart/form-data), e.g. '["denim","casual"]'
@@ -189,11 +205,13 @@ async def create_garment(
 
 
 @router.post("/suggest-tags", response_model=TagSuggestionResponse)
-async def suggest_garment_tags(request: TagSuggestionRequest):
+async def suggest_garment_tags(
+    request: TagSuggestionRequest,
+    provider: AIProviderProtocol = Depends(get_ai_provider),
+):
     """Ask the configured AI provider (NIM, falling back to local) for tag
     suggestions. Read-only / side-effect-free - the user must still accept,
     edit, or reject each suggestion before it's saved on the garment."""
-    provider = AIProviderFactory.get_provider()
     suggested = provider.suggest_tags(
         name=request.name,
         garment_type=request.type,
@@ -208,7 +226,10 @@ async def suggest_garment_tags(request: TagSuggestionRequest):
 
 
 @router.post("/analyze-image", response_model=ImageAnalysisResponse)
-async def analyze_garment_image(image: UploadFile = File(...)):
+async def analyze_garment_image(
+    image: UploadFile = File(...),
+    provider: AIProviderProtocol = Depends(get_ai_provider),
+):
     """Best-effort field guesses from a garment photo (name/type/color/
     material/pattern/formality/tags), used to auto-fill the add-garment form.
     Read-only / side-effect-free — nothing is saved, and every field the user
@@ -224,9 +245,145 @@ async def analyze_garment_image(image: UploadFile = File(...)):
             status_code=413, detail=f"Image exceeds {settings.MAX_UPLOAD_SIZE_MB}MB limit"
         )
 
-    provider = AIProviderFactory.get_provider()
     result = provider.analyze_image(raw_bytes, image.content_type)
     return ImageAnalysisResponse(**result, provider=provider.name)
+
+
+@router.get("/export")
+async def export_garments(session: Session = Depends(get_session)):
+    """Download the whole wardrobe as a .zip: wardrobe.json (every
+    garment's metadata) plus each garment's raw photo under images/, so the
+    export round-trips through POST /garments/import with photos intact.
+    Server-side file paths aren't included in the manifest since they won't
+    exist on the machine importing it - each entry instead points at its
+    image's archive path via `image_file`.
+    """
+    import io
+    import json
+    import zipfile
+    from datetime import datetime
+
+    repo = GarmentRepository(session)
+    garments = repo.get_all(limit=100000)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        manifest = []
+        for g in garments:
+            entry = json.loads(GarmentResponse.model_validate(g).model_dump_json())
+            raw_path = settings.IMAGES_RAW_DIR / g.raw_image_path
+            if raw_path.exists():
+                archive_name = f"images/{g.raw_image_path}"
+                zf.write(raw_path, archive_name)
+                entry["image_file"] = archive_name
+            else:
+                entry["image_file"] = None
+            manifest.append(entry)
+
+        zf.writestr(
+            "wardrobe.json",
+            json.dumps(
+                {"version": 1, "exported_at": datetime.utcnow().isoformat(), "garments": manifest},
+                indent=2,
+            ),
+        )
+
+    buffer.seek(0)
+    filename = f"smart-wardrobe-export-{datetime.utcnow().strftime('%Y-%m-%d')}.zip"
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import", dependencies=[Depends(require_api_key)])
+async def import_garments(
+    file: UploadFile = File(...), session: Session = Depends(get_session)
+):
+    """Import garments from a .zip previously produced by GET /garments/export.
+    Additive merge, not an overwrite - every entry becomes a brand-new
+    garment with a fresh id and its own copied image files, regardless of
+    what was already in the wardrobe. Entries whose image is missing from
+    the archive, or whose metadata fails validation, are skipped rather
+    than aborting the whole import.
+    """
+    import io
+    import json
+    import zipfile
+    from pathlib import Path
+
+    from pydantic import ValidationError
+
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="File must be a .zip export")
+
+    max_bytes = 500 * 1024 * 1024  # generous cap for a whole-wardrobe archive
+    raw_bytes = await file.read(max_bytes + 1)
+    if len(raw_bytes) > max_bytes:
+        raise HTTPException(status_code=413, detail="Export file is too large")
+
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw_bytes))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="File is not a valid .zip export") from None
+
+    try:
+        manifest = json.loads(zf.read("wardrobe.json"))
+    except KeyError:
+        raise HTTPException(status_code=400, detail="Zip is missing wardrobe.json") from None
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="wardrobe.json is not valid JSON") from None
+
+    archive_names = set(zf.namelist())
+    repo = GarmentRepository(session)
+    imported = 0
+    skipped = 0
+
+    for entry in manifest.get("garments", []):
+        image_file = entry.get("image_file")
+        if not image_file or image_file not in archive_names:
+            skipped += 1
+            continue
+
+        try:
+            garment_data = GarmentCreate(
+                name=entry.get("name", "Imported garment"),
+                brand=entry.get("brand"),
+                type=entry.get("type", "top"),
+                season=entry.get("season", "all_season"),
+                size=entry.get("size"),
+                material=entry.get("material"),
+                color_name=entry.get("color_name", "Unknown"),
+                color_hex=entry.get("color_hex", "#4a4a4a"),
+                pattern=entry.get("pattern", "solid"),
+                formality=entry.get("formality", 1),
+                tags=entry.get("tags", []),
+            )
+        except ValidationError:
+            skipped += 1
+            continue
+
+        image_bytes = zf.read(image_file)
+        ext = Path(image_file).suffix or ".jpg"
+        raw_filename = f"{uuid.uuid4()}{ext}"
+        raw_path = settings.IMAGES_RAW_DIR / raw_filename
+        with open(raw_path, "wb") as f:
+            f.write(image_bytes)
+
+        processed_filename = f"{uuid.uuid4()}.png"
+        processed_path = settings.IMAGES_PROCESSED_GARMENTS_DIR / processed_filename
+        shutil.copy2(raw_path, processed_path)
+
+        garment = Garment(
+            **garment_data.model_dump(),
+            raw_image_path=raw_filename,
+            processed_image_path=processed_filename,
+        )
+        repo.create(garment)
+        imported += 1
+
+    return {"imported": imported, "skipped": skipped}
 
 
 @router.get("/{garment_id}", response_model=GarmentResponse)
@@ -266,8 +423,11 @@ async def bulk_delete_garments(ids: list[int], session: Session = Depends(get_se
     if len(ids) > 500:
         raise HTTPException(status_code=400, detail="Cannot delete more than 500 garments at once")
     repo = GarmentRepository(session)
-    deleted = repo.bulk_delete(ids)
-    return {"deleted": deleted}
+    # A 204 response must not carry a body (RFC 7231 6.3.5) - returning the
+    # {"deleted": ...} dict here made Starlette/uvicorn emit a malformed
+    # response that the browser's fetch() rejects, so bulk delete always
+    # failed client-side even though the DB rows were actually removed.
+    repo.bulk_delete(ids)
 
 
 # ========== OUTFIT ENDPOINTS ==========
@@ -556,8 +716,6 @@ async def update_ai_config(config: AIConfigUpdate):
         settings.NIM_API_KEY = config.nim_api_key
     if config.gemini_api_key is not None:
         settings.GEMINI_API_KEY = config.gemini_api_key
-
-    AIProviderFactory.clear_cache()
 
     import json
 

@@ -29,12 +29,24 @@ def _like_or_dislike(rating: int) -> str:
 class OutfitService:
     """Business logic for outfit recommendations and management"""
 
-    def __init__(self, session):
-        self.garment_repo = GarmentRepository(session)
-        self.outfit_repo = OutfitRepository(session)
-        self.item_repo = OutfitItemRepository(session)
-        self.rule_repo = StyleRuleRepository(session)
-        self.feedback_repo = UserFeedbackRepository(session)
+    def __init__(
+        self,
+        session,
+        garment_repo: GarmentRepository | None = None,
+        outfit_repo: OutfitRepository | None = None,
+        item_repo: OutfitItemRepository | None = None,
+        rule_repo: StyleRuleRepository | None = None,
+        feedback_repo: UserFeedbackRepository | None = None,
+    ):
+        # Repositories are injectable (DIP) - defaults build the real
+        # SQLModel-backed ones from `session` so every existing call site
+        # (`OutfitService(session)`) keeps working unchanged, but tests can
+        # pass fakes/mocks for any of them without touching a real DB.
+        self.garment_repo = garment_repo or GarmentRepository(session)
+        self.outfit_repo = outfit_repo or OutfitRepository(session)
+        self.item_repo = item_repo or OutfitItemRepository(session)
+        self.rule_repo = rule_repo or StyleRuleRepository(session)
+        self.feedback_repo = feedback_repo or UserFeedbackRepository(session)
 
     # ========== OUTFIT RECOMMENDATIONS ==========
 
@@ -112,13 +124,34 @@ class OutfitService:
     def _generate_combinations(
         self, garments: list[Garment], occasion: str, season: str, top_n: int
     ) -> list[Outfit]:
-        """Generate outfit combinations from available garments"""
+        """Generate outfit combinations from available garments.
+
+        Mandatory composition rules:
+        - top + bottom + shoes, UNLESS a dress is used (dress replaces
+          top + bottom, but shoes are still mandatory either way).
+        - in winter, at least one outerwear piece (jacket/coat) is
+          mandatory; occasionally two are layered together at once.
+        If the wardrobe can't satisfy these (e.g. no shoes at all, or no
+        outerwear for a winter look), no combinations can be generated and
+        an empty list is returned - callers already handle that case.
+        """
         # Group by type
-        by_type = {}
+        by_type: dict[str, list[Garment]] = {}
         for g in garments:
-            if g.type not in by_type:
-                by_type[g.type] = []
-            by_type[g.type].append(g)
+            by_type.setdefault(g.type, []).append(g)
+
+        has_top_bottom = bool(by_type.get("top")) and bool(by_type.get("bottom"))
+        has_dress = bool(by_type.get("dress"))
+        has_shoes = bool(by_type.get("shoes"))
+        is_winter = season == "winter"
+        has_outerwear = bool(by_type.get("outerwear"))
+
+        if not has_top_bottom and not has_dress:
+            return []
+        if not has_shoes:
+            return []
+        if is_winter and not has_outerwear:
+            return []
 
         outfits = []
         attempts = 0
@@ -127,40 +160,45 @@ class OutfitService:
         while len(outfits) < top_n and attempts < max_attempts:
             attempts += 1
 
-            # Build outfit: top + bottom (or dress) + optional outerwear/shoes/accessory
             outfit_garments = []
 
-            # Must have top or dress
-            if "top" in by_type and by_type["top"]:
-                outfit_garments.append(random.choice(by_type["top"]))
-            elif "dress" in by_type and by_type["dress"]:
+            # Base of the outfit: dress, or top+bottom together (never a
+            # top/bottom without its pair - a lone top or lone bottom isn't
+            # a valid outfit under the new rules).
+            use_dress = has_dress and (not has_top_bottom or random.random() < 0.3)
+            if use_dress:
                 outfit_garments.append(random.choice(by_type["dress"]))
+            elif has_top_bottom:
+                outfit_garments.append(random.choice(by_type["top"]))
+                outfit_garments.append(random.choice(by_type["bottom"]))
             else:
                 continue
 
-            # Add bottom if we have top (not dress)
-            if outfit_garments[-1].type == "top" and "bottom" in by_type and by_type["bottom"]:
-                outfit_garments.append(random.choice(by_type["bottom"]))
+            # Shoes are always mandatory.
+            outfit_garments.append(random.choice(by_type["shoes"]))
 
-            # Optionally add outerwear
-            if "outerwear" in by_type and by_type["outerwear"] and random.random() < 0.3:
+            # Outerwear: mandatory in winter (occasionally layering two
+            # pieces - jacket + coat at once); optional the rest of the year.
+            if is_winter:
+                outerwear_pool = by_type["outerwear"]
+                first_outerwear = random.choice(outerwear_pool)
+                outfit_garments.append(first_outerwear)
+                remaining_outerwear = [g for g in outerwear_pool if g.id != first_outerwear.id]
+                if remaining_outerwear and random.random() < 0.35:
+                    outfit_garments.append(random.choice(remaining_outerwear))
+            elif has_outerwear and random.random() < 0.3:
                 outfit_garments.append(random.choice(by_type["outerwear"]))
-
-            # Optionally add shoes
-            if "shoes" in by_type and by_type["shoes"] and random.random() < 0.5:
-                outfit_garments.append(random.choice(by_type["shoes"]))
 
             # Optionally add accessory
             if "accessory" in by_type and by_type["accessory"] and random.random() < 0.3:
                 outfit_garments.append(random.choice(by_type["accessory"]))
 
-            if len(outfit_garments) >= 2:
-                        outfit = Outfit(
-                            name=f"{occasion.title()} Outfit", occasion=occasion, season=season, score=0.0
-                        )
-                        # Store garments as transient attribute for scoring/tips
-                        outfit._garments = outfit_garments
-                        outfits.append(outfit)
+            outfit = Outfit(
+                name=f"{occasion.title()} Outfit", occasion=occasion, season=season, score=0.0
+            )
+            # Store garments as transient attribute for scoring/tips
+            outfit._garments = outfit_garments
+            outfits.append(outfit)
 
         return outfits
 
@@ -354,20 +392,15 @@ class OutfitService:
         return max(0, min(100, base_score))
 
     def _apply_rule(self, outfit: Outfit, rule_type: str, params: dict) -> float:
-        """Apply a single style rule"""
+        """Apply a single style rule via a Strategy registry: adding a new
+        rule_type (color_harmony, occasion_match, ...) only means adding an
+        entry to _RULE_SCORERS below, not editing this method."""
         garments = outfit._garments if hasattr(outfit, '_garments') else []
         if not garments:
             return 0
 
-        if rule_type == "color_harmony":
-            return self._color_harmony_score(garments, params)
-        elif rule_type == "occasion_match":
-            return self._occasion_match_score(garments, params)
-        elif rule_type == "season_match":
-            return self._season_match_score(garments, params)
-        elif rule_type == "formality_cap":
-            return self._formality_cap_score(garments, params)
-        return 0
+        scorer = self._RULE_SCORERS.get(rule_type)
+        return scorer(self, garments, params) if scorer else 0
 
     def _color_harmony_score(self, garments: list[Garment], params: dict) -> float:
         """Score based on color harmony"""
@@ -400,6 +433,16 @@ class OutfitService:
         max_formality = params.get("max_formality", 5)
         violations = sum(1 for g in garments if g.formality > max_formality)
         return max(0, 100 - violations * 25)
+
+    # Strategy registry for _apply_rule (OCP): a new StyleRule.rule_type only
+    # needs a new entry here plus its scorer method - _apply_rule itself and
+    # _calculate_score never need to change.
+    _RULE_SCORERS = {
+        "color_harmony": _color_harmony_score,
+        "occasion_match": _occasion_match_score,
+        "season_match": _season_match_score,
+        "formality_cap": _formality_cap_score,
+    }
 
     def _get_score_breakdown(self, outfit: Outfit, rules: list[StyleRule]) -> dict[str, float]:
         """Get detailed score breakdown"""

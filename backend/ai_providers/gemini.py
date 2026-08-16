@@ -8,8 +8,6 @@ import logging
 import requests
 
 from backend.core.config import settings
-from backend.models.garment import Garment, Outfit
-from backend.models.schemas import OutfitRecommendationRequest, PackingPlanRequest
 
 logger = logging.getLogger(__name__)
 
@@ -165,48 +163,3 @@ class GeminiProvider:
         except Exception as e:
             logger.error(f"Gemini image analysis failed: {e}")
             return empty
-
-    def recommend_outfits(
-        self, request: OutfitRecommendationRequest, garments: list[Garment]
-    ) -> list[Outfit]:
-        from backend.ai_providers.local import LocalRulesProvider
-
-        if not self.api_key:
-            return LocalRulesProvider().recommend_outfits(request, garments)
-
-        try:
-            context = "\n".join(
-                f"- {g.name} ({g.type}, {g.color_name}, formality: {g.formality}/5, "
-                f"season: {g.season}, pattern: {g.pattern})"
-                for g in garments
-            )
-            prompt = (
-                f"You are a professional stylist. Recommend {request.top_n} outfit(s) for a "
-                f"{request.occasion} occasion in {request.season} season.\n\nAvailable garments:\n"
-                f"{context}\n\nReturn a JSON array of outfits, each with: name, garments "
-                "(list of garment names used), score (0-100), score_breakdown "
-                "(color_harmony, formality_match, pattern_balance, seasonal), tips (1-2 strings)."
-            )
-            response = self._call_gemini([{"text": prompt}], temperature=0.7)
-            outfits_data = json.loads(self._extract_text(response))
-            outfits = []
-            for o in outfits_data:
-                outfits.append(
-                    Outfit(
-                        name=o.get("name", "Recommended Outfit"),
-                        occasion=request.occasion,
-                        season=request.season,
-                        score=o.get("score", 75),
-                        score_breakdown=o.get("score_breakdown", {}),
-                        ai_tips=o.get("tips", []),
-                    )
-                )
-            return outfits
-        except Exception as e:
-            logger.error(f"Gemini recommendation failed: {e}, falling back to local")
-            return LocalRulesProvider().recommend_outfits(request, garments)
-
-    def create_packing_plan(self, request: PackingPlanRequest, garments: list[Garment]) -> dict:
-        from backend.ai_providers.local import LocalRulesProvider
-
-        return LocalRulesProvider().create_packing_plan(request, garments)

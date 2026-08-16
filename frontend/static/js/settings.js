@@ -5,9 +5,12 @@ import { api } from './api.js';
 import { getLanguage } from './i18n.js';
 import { getColorPalette, getHexForColorName } from './colors.js';
 import {
-    formatType, formatPattern, formatFormality, escapeHtml,
+    escapeHtml,
     showToast, openModal, closeModal, prefersReducedMotion, debounce
 } from './utils.js';
+import { garmentCardBodyHTML } from './garments-render.js';
+import { createTagInput } from './tag-input.js';
+import { createImageUpload } from './image-upload.js';
 
 /**
  * Settings UI Controller
@@ -27,8 +30,11 @@ class SettingsUI {
                 season: ''
             },
             isLoading: false,
-            currentTags: [],
-            suggestedTags: []
+            // Tracks whether each provider already has a key saved server-side
+            // (independent of whatever's currently typed in the password
+            // inputs) - lets switching providers work without retyping a key
+            // that was already configured in a previous save.
+            aiConfigured: { nim: false, gemini: false }
         };
 
         this.elements = {};
@@ -38,6 +44,21 @@ class SettingsUI {
 
     async init() {
         this.cacheElements();
+        this.tagInput = createTagInput({
+            input: this.elements.garmentTagInput,
+            currentList: this.elements.currentTagsList,
+            suggestedList: this.elements.suggestedTagsList,
+            suggestedChips: this.elements.suggestedTagsChips,
+            hiddenField: this.elements.garmentTagsHidden
+        });
+        this.imageUpload = createImageUpload({
+            zone: this.elements.uploadZone,
+            fileInput: this.elements.garmentImage,
+            preview: this.elements.imagePreview,
+            previewImage: this.elements.previewImage,
+            removeBtn: this.elements.removeImage,
+            autoFillBtn: this.elements.autoFillBtn
+        });
         this.bindEvents();
         this.populateColorSuggestions();
         await this.loadGarments();
@@ -60,7 +81,6 @@ class SettingsUI {
         // Modals
         this.elements.addGarmentModal = document.getElementById('addGarmentModal');
         this.elements.addGarmentForm = document.getElementById('addGarmentForm');
-        this.elements.imageUpload = document.getElementById('imageUpload');
         this.elements.garmentImage = document.getElementById('garmentImage');
         this.elements.uploadZone = document.getElementById('uploadZone');
         this.elements.imagePreview = document.getElementById('imagePreview');
@@ -89,6 +109,11 @@ class SettingsUI {
         this.elements.nimApiKeyInput = document.getElementById('nimApiKeyInput');
         this.elements.geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
         this.elements.saveConfigBtn = document.getElementById('saveConfigBtn');
+
+        // Export / Import
+        this.elements.exportGarmentsBtn = document.getElementById('exportGarmentsBtn');
+        this.elements.importGarmentsBtn = document.getElementById('importGarmentsBtn');
+        this.elements.importGarmentsInput = document.getElementById('importGarmentsInput');
     }
 
     bindEvents() {
@@ -100,68 +125,14 @@ class SettingsUI {
             this.elements.emptyAddGarmentBtn.addEventListener('click', () => this.openAddGarmentModal());
         }
 
-        // Image upload - drag & drop
-        const upload = this.elements.imageUpload;
-        const uploadZone = this.elements.uploadZone;
-        const fileInput = this.elements.garmentImage;
-        if (upload && uploadZone && fileInput) {
-            // Click to open
-            uploadZone.addEventListener('click', (e) => {
-                if (!e.target.closest('.preview-remove') && !e.target.closest('.image-preview')) {
-                    fileInput.click();
-                }
-            });
-
-            // File input change
-            fileInput.addEventListener('change', (e) => this.handleImageSelect(e));
-
-            // Drag & drop
-            ['dragenter', 'dragover'].forEach(evt => {
-                uploadZone.addEventListener(evt, (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    uploadZone.classList.add('drag-active');
-                });
-            });
-            ['dragleave', 'drop'].forEach(evt => {
-                uploadZone.addEventListener(evt, (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    uploadZone.classList.remove('drag-active');
-                });
-            });
-            uploadZone.addEventListener('drop', (e) => {
-                const file = e.dataTransfer.files[0];
-                if (file && file.type.startsWith('image/')) {
-                    fileInput.files = e.dataTransfer.files;
-                    this.handleImageSelect({ target: fileInput });
-                }
-            });
-        }
-
-        // Remove image
-        if (this.elements.removeImage) {
-            this.elements.removeImage.addEventListener('click', () => this.clearImagePreview());
-        }
+        // Image upload, drag & drop, and remove are bound inside createImageUpload()
 
         // Auto-fill with AI
         if (this.elements.autoFillBtn) {
             this.elements.autoFillBtn.addEventListener('click', () => this.autoFillFromImage());
         }
 
-        // Tags
-        if (this.elements.garmentTagInput) {
-            this.elements.garmentTagInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const value = this.elements.garmentTagInput.value.trim();
-                    if (value) {
-                        this.addTag(value);
-                        this.elements.garmentTagInput.value = '';
-                    }
-                }
-            });
-        }
+        // Tag "Enter to add" is bound inside createTagInput()
         if (this.elements.suggestTagsBtn) {
             this.elements.suggestTagsBtn.addEventListener('click', () => this.suggestTagsWithAI());
         }
@@ -220,6 +191,15 @@ class SettingsUI {
         // System config
         if (this.elements.saveConfigBtn) {
             this.elements.saveConfigBtn.addEventListener('click', () => this.saveSystemConfig());
+        }
+
+        // Export / Import
+        if (this.elements.exportGarmentsBtn) {
+            this.elements.exportGarmentsBtn.addEventListener('click', () => this.exportGarments());
+        }
+        if (this.elements.importGarmentsBtn && this.elements.importGarmentsInput) {
+            this.elements.importGarmentsBtn.addEventListener('click', () => this.elements.importGarmentsInput.click());
+            this.elements.importGarmentsInput.addEventListener('change', (e) => this.handleImportFile(e));
         }
 
         // Scroll reveal for sections (IntersectionObserver)
@@ -303,32 +283,14 @@ class SettingsUI {
     }
 
     createGarmentCard(garment) {
-        const colorHex = garment.color_hex || '#666666';
         const isSelected = this.state.selectedGarmentIds.has(garment.id);
-        const imageUrl = garment.raw_image_path
-            ? `/images/raw/${garment.raw_image_path.replace(/^.*[\\\/]/, '')}`
-            : garment.processed_image_path
-                ? `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\\/]/, '')}`
-                : null;
 
         return `
             <article class="wardrobe-item ${isSelected ? 'selected' : ''}" data-garment-id="${garment.id}">
                 <div class="wardrobe-item-checkbox">
                     <input type="checkbox" class="item-checkbox" data-garment-id="${garment.id}" ${isSelected ? 'checked' : ''} aria-label="Select ${escapeHtml(garment.name)}">
                 </div>
-                ${imageUrl
-                    ? `<img class="wardrobe-item-image" src="${imageUrl}" alt="${escapeHtml(garment.name)}" loading="lazy">`
-                    : `<div class="wardrobe-item-image" style="background-color: ${colorHex};"></div>`
-                }
-                <div class="wardrobe-item-info">
-                    <h4 class="wardrobe-item-name">${escapeHtml(garment.name)}</h4>
-                    <div class="wardrobe-item-meta">
-                        <span class="tag tag-type">${formatType(garment.type)}</span>
-                        <span class="tag tag-color" style="--tag-color: ${colorHex}">${escapeHtml(garment.color_name)}</span>
-                        <span class="tag">${formatPattern(garment.pattern)}</span>
-                        <span class="tag">${formatFormality(garment.formality)}</span>
-                    </div>
-                </div>
+                ${garmentCardBodyHTML(garment)}
                 <div class="wardrobe-item-actions">
                     <button class="item-action-btn edit-btn" data-garment-id="${garment.id}" aria-label="Edit garment">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -492,12 +454,10 @@ class SettingsUI {
         if (form.garmentPattern) form.garmentPattern.value = garment.pattern || 'solid';
         if (form.garmentFormality) form.garmentFormality.value = garment.formality || 1;
 
-        this.state.currentTags = Array.isArray(garment.tags) ? [...garment.tags] : [];
-        this.state.suggestedTags = [];
-        this.renderTags();
+        this.tagInput.setTags(garment.tags);
 
         // Clear image preview
-        this.clearImagePreview();
+        this.imageUpload.clear();
     }
 
     async handleAddGarmentSubmit(event) {
@@ -540,7 +500,7 @@ class SettingsUI {
                     color_hex: formData.get('garmentColorHex') || undefined,
                     pattern: formData.get('garmentPattern') || undefined,
                     formality: formData.get('garmentFormality') ? parseInt(formData.get('garmentFormality'), 10) : undefined,
-                    tags: this.state.currentTags
+                    tags: this.tagInput.getTags()
                 };
 
                 await api.updateGarment(parseInt(editId), garmentData);
@@ -564,7 +524,7 @@ class SettingsUI {
                 if (size) uploadData.set('size', size);
                 const material = formData.get('garmentMaterial');
                 if (material) uploadData.set('material', material);
-                uploadData.set('tags', JSON.stringify(this.state.currentTags));
+                uploadData.set('tags', JSON.stringify(this.tagInput.getTags()));
                 uploadData.set('garmentImage', formData.get('garmentImage'));
 
                 await api.createGarment(uploadData);
@@ -573,7 +533,7 @@ class SettingsUI {
 
             this.closeModal(this.elements.addGarmentModal);
             form.reset();
-            this.clearImagePreview();
+            this.imageUpload.clear();
             delete form.dataset.editId;
             if (btnText) btnText.textContent = 'Save Garment';
 
@@ -597,124 +557,9 @@ class SettingsUI {
             const btnText = form.querySelector('.btn-text');
             if (btnText) btnText.textContent = 'Save Garment';
         }
-        this.state.currentTags = [];
-        this.state.suggestedTags = [];
-        this.renderTags();
-        this.clearImagePreview();
+        this.tagInput.reset();
+        this.imageUpload.clear();
         this.openModal(this.elements.addGarmentModal);
-    }
-
-    handleImageSelect(event) {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-            showToast('Please select a valid image', 'warning');
-            event.target.value = '';
-            return;
-        }
-
-        // Validate file size (max 10MB)
-        if (file.size > 10 * 1024 * 1024) {
-            showToast('Image too large (max 10MB)', 'warning');
-            event.target.value = '';
-            return;
-        }
-
-        // Show preview
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            this.showImagePreview(e.target.result);
-        };
-        reader.readAsDataURL(file);
-
-        if (this.elements.autoFillBtn) {
-            this.elements.autoFillBtn.hidden = false;
-        }
-    }
-
-    showImagePreview(dataUrl) {
-        const uploadZone = this.elements.uploadZone;
-        const imagePreview = this.elements.imagePreview;
-        const previewImage = this.elements.previewImage;
-
-        if (uploadZone) uploadZone.classList.add('hidden');
-        if (imagePreview) imagePreview.hidden = false;
-        if (previewImage) previewImage.src = dataUrl;
-    }
-
-    clearImagePreview() {
-        const uploadZone = this.elements.uploadZone;
-        const imagePreview = this.elements.imagePreview;
-        const fileInput = this.elements.garmentImage;
-
-        if (uploadZone) uploadZone.classList.remove('hidden');
-        if (imagePreview) imagePreview.hidden = true;
-        if (fileInput) fileInput.value = '';
-        if (uploadZone) uploadZone.classList.remove('drag-active');
-        if (this.elements.autoFillBtn) this.elements.autoFillBtn.hidden = true;
-    }
-
-    // ========== TAGS ==========
-
-    addTag(tag) {
-        tag = tag.trim().toLowerCase();
-        if (!tag || this.state.currentTags.includes(tag)) return;
-        this.state.currentTags.push(tag);
-        this.state.suggestedTags = this.state.suggestedTags.filter(t => t !== tag);
-        this.renderTags();
-    }
-
-    removeTag(tag) {
-        this.state.currentTags = this.state.currentTags.filter(t => t !== tag);
-        this.renderTags();
-    }
-
-    dismissSuggestedTag(tag) {
-        this.state.suggestedTags = this.state.suggestedTags.filter(t => t !== tag);
-        this.renderTags();
-    }
-
-    renderTags() {
-        const list = this.elements.currentTagsList;
-        if (list) {
-            list.innerHTML = this.state.currentTags.map(tag => `
-                <span class="tag-chip">
-                    ${escapeHtml(tag)}
-                    <button type="button" class="tag-chip-remove" data-tag="${escapeHtml(tag)}" aria-label="Remove tag ${escapeHtml(tag)}">&times;</button>
-                </span>
-            `).join('');
-            list.querySelectorAll('.tag-chip-remove').forEach(btn => {
-                btn.addEventListener('click', () => this.removeTag(btn.dataset.tag));
-            });
-        }
-
-        const suggList = this.elements.suggestedTagsList;
-        const suggChips = this.elements.suggestedTagsChips;
-        if (suggList && suggChips) {
-            if (this.state.suggestedTags.length === 0) {
-                suggList.hidden = true;
-            } else {
-                suggList.hidden = false;
-                suggChips.innerHTML = this.state.suggestedTags.map(tag => `
-                    <span class="tag-chip tag-chip-suggested">
-                        <button type="button" class="tag-chip-accept" data-tag="${escapeHtml(tag)}">+ ${escapeHtml(tag)}</button>
-                        <button type="button" class="tag-chip-dismiss" data-tag="${escapeHtml(tag)}" aria-label="Dismiss ${escapeHtml(tag)}">&times;</button>
-                    </span>
-                `).join('');
-                suggChips.querySelectorAll('.tag-chip-accept').forEach(btn => {
-                    btn.addEventListener('click', () => this.addTag(btn.dataset.tag));
-                });
-                suggChips.querySelectorAll('.tag-chip-dismiss').forEach(btn => {
-                    btn.addEventListener('click', () => this.dismissSuggestedTag(btn.dataset.tag));
-                });
-            }
-        }
-
-        if (this.elements.garmentTagsHidden) {
-            this.elements.garmentTagsHidden.value = JSON.stringify(this.state.currentTags);
-        }
     }
 
     // ========== COLOR ==========
@@ -796,9 +641,7 @@ class SettingsUI {
                 filledCount++;
             }
             if (result.tags && result.tags.length) {
-                const newOnes = result.tags.filter(t => !this.state.currentTags.includes(t));
-                this.state.suggestedTags = [...new Set([...this.state.suggestedTags, ...newOnes])];
-                this.renderTags();
+                this.tagInput.addSuggestions(result.tags);
             }
 
             if (filledCount === 0 && (!result.tags || result.tags.length === 0)) {
@@ -841,12 +684,10 @@ class SettingsUI {
                 pattern: form.garmentPattern?.value || null,
                 brand: form.garmentBrand?.value || null,
                 season: form.garmentSeason?.value || null,
-                existing_tags: this.state.currentTags
+                existing_tags: this.tagInput.getTags()
             });
-            const newOnes = (result.suggested_tags || []).filter(t => !this.state.currentTags.includes(t));
-            this.state.suggestedTags = [...new Set([...this.state.suggestedTags, ...newOnes])];
-            this.renderTags();
-            if (newOnes.length === 0) {
+            const addedCount = this.tagInput.addSuggestions(result.suggested_tags || []);
+            if (addedCount === 0) {
                 showToast('No new tag suggestions', 'info');
             }
         } catch (error) {
@@ -880,6 +721,12 @@ class SettingsUI {
             }
 
             const config = await api.getAIConfig();
+            // Remember which providers already have a key saved server-side,
+            // independent of the (currently empty) password inputs - this is
+            // what lets saveSystemConfig() allow switching providers without
+            // forcing the user to retype a key that was already configured.
+            this.state.aiConfigured.nim = !!config.nim_configured;
+            this.state.aiConfigured.gemini = !!config.gemini_configured;
             if (this.elements.nimApiKeyInput && config.nim_configured) {
                 this.elements.nimApiKeyInput.placeholder = '•••••••• (configured)';
             }
@@ -896,11 +743,15 @@ class SettingsUI {
         const nimKey = this.elements.nimApiKeyInput?.value?.trim();
         const geminiKey = this.elements.geminiApiKeyInput?.value?.trim();
 
-        if (provider === 'nim' && !nimKey) {
+        // Only block the switch if this provider has NEITHER a freshly
+        // typed key NOR one already saved server-side - switching to a
+        // provider that was configured in a previous save must work without
+        // retyping its key every time.
+        if (provider === 'nim' && !nimKey && !this.state.aiConfigured.nim) {
             showToast('Enter a NIM API key, or pick another provider', 'warning');
             return;
         }
-        if (provider === 'gemini' && !geminiKey) {
+        if (provider === 'gemini' && !geminiKey && !this.state.aiConfigured.gemini) {
             showToast('Enter a Google AI Studio API key, or pick another provider', 'warning');
             return;
         }
@@ -922,6 +773,58 @@ class SettingsUI {
             showToast(`Error: ${error.message}`, 'error');
         } finally {
             if (btn) btn.disabled = false;
+        }
+    }
+
+    // ========== EXPORT / IMPORT ==========
+
+    /**
+     * Downloads the whole wardrobe (metadata + photos, bundled as a .zip by
+     * the backend) via api.exportGarments(), which triggers the browser's
+     * native save dialog directly - nothing to render here.
+     */
+    async exportGarments() {
+        const btn = this.elements.exportGarmentsBtn;
+        if (btn) btn.disabled = true;
+        try {
+            await api.exportGarments();
+            showToast('Wardrobe exported', 'success');
+        } catch (error) {
+            showToast(`Error: ${error.message}`, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    /**
+     * Uploads a .zip previously produced by exportGarments(). The backend
+     * unpacks wardrobe.json + images/ and creates a brand-new garment (with
+     * its own copied photo) per entry - always additive, never overwrites
+     * or dedupes against what's already in the wardrobe.
+     */
+    async handleImportFile(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!file.name.toLowerCase().endsWith('.zip')) {
+            showToast('Select a .zip export file', 'warning');
+            event.target.value = '';
+            return;
+        }
+
+        const btn = this.elements.importGarmentsBtn;
+        if (btn) btn.disabled = true;
+
+        try {
+            const result = await api.importGarments(file);
+            const skippedNote = result.skipped ? ` (${result.skipped} skipped)` : '';
+            showToast(`Imported ${result.imported} garments${skippedNote}`, 'success');
+            await this.loadGarments();
+        } catch (error) {
+            showToast(`Error: ${error.message}`, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+            event.target.value = '';
         }
     }
 
@@ -984,7 +887,7 @@ class SettingsUI {
                 const btnText = form.querySelector('.btn-text');
                 if (btnText) btnText.textContent = 'Save Garment';
             }
-            this.clearImagePreview();
+            this.imageUpload.clear();
         }
     }
 }

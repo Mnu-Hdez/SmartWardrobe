@@ -4,64 +4,28 @@ from backend.ai_providers.local import LocalRulesProvider
 from backend.ai_providers.nim import NVIDIANIMProvider
 from backend.core.config import get_settings
 
+# Registry of provider constructors (OCP): a new provider only needs a new
+# entry here, not a new branch in get_ai_provider().
+_PROVIDER_CLASSES = {
+    "nim": NVIDIANIMProvider,
+    "gemini": GeminiProvider,
+}
 
-class AIProviderFactory:
-    """Factory for creating AI provider instances."""
 
-    _instance: AIProviderProtocol | None = None
-    _provider_name: str | None = None
+def get_ai_provider() -> AIProviderProtocol:
+    """FastAPI dependency (DIP): routers depend on this function via
+    `Depends(get_ai_provider)` rather than importing a concrete factory
+    class, so a test can override it (`app.dependency_overrides`) with a
+    fake provider without touching any endpoint code.
 
-    @classmethod
-    def get_provider(cls, provider_name: str | None = None) -> AIProviderProtocol:
-        """Get or create an AI provider instance."""
-        settings = get_settings()
-
-        # Determine provider name
-        name = provider_name or settings.AI_PROVIDER
-
-        # Return cached instance if same provider
-        if cls._instance is not None and cls._provider_name == name:
-            return cls._instance
-
-        # Create new instance
-        if name == "nim":
-            provider = NVIDIANIMProvider()
-        elif name == "gemini":
-            provider = GeminiProvider()
-        else:
-            provider = LocalRulesProvider()
-
-        cls._instance = provider
-        cls._provider_name = name
-        return provider
-
-    @classmethod
-    async def get_available_provider(cls) -> AIProviderProtocol:
-        """Get the best available provider, falling back to local."""
-        settings = get_settings()
-
-        if settings.AI_PROVIDER == "nim":
-            nim_provider = NVIDIANIMProvider()
-            if await nim_provider.health_check():
-                cls._instance = nim_provider
-                cls._provider_name = "nim"
-                return nim_provider
-
-        # Fallback to local
-        provider = LocalRulesProvider()
-        cls._instance = provider
-        cls._provider_name = "local"
-        return provider
-
-    @classmethod
-    def clear_cache(cls):
-        """Clear the cached provider instance."""
-        if cls._instance and hasattr(cls._instance, "close"):
-            import asyncio
-
-            try:
-                asyncio.create_task(cls._instance.close())
-            except Exception:
-                pass
-        cls._instance = None
-        cls._provider_name = None
+    Builds a fresh provider instance from the *current* settings on every
+    call - no class-level singleton, no manual cache invalidation. Every
+    provider's __init__ is cheap (it just stores an api_key/base_url; the
+    network call only happens in suggest_tags()/analyze_image()), so there's
+    no real cost to skipping the cache - and it means update_ai_config()
+    no longer needs to remember to invalidate anything when the provider
+    or its keys change.
+    """
+    settings = get_settings()
+    provider_class = _PROVIDER_CLASSES.get(settings.AI_PROVIDER, LocalRulesProvider)
+    return provider_class()

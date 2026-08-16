@@ -168,6 +168,79 @@ export function observeReveal(selector = '.reveal-on-scroll', options = {}) {
     document.querySelectorAll(selector).forEach(el => observer.observe(el));
 }
 
+// ========== SPRING (apple-design gesture physics) ==========
+// Lightweight velocity-aware spring integrator - no external animation
+// library needed (see /mnt/skills/user/apple-design). Used to settle
+// anything the user just dragged (garment swipe reject/exit, dial snap) so
+// the release inherits real momentum instead of easing on a fixed curve.
+
+/**
+ * Animates a single numeric value from `from` toward `to`, inheriting
+ * `velocity` from the gesture that released it, via a damped-spring
+ * integrator (critically damped by default - no overshoot). Calls
+ * `onUpdate(value)` every frame and `onComplete()` once settled.
+ * Respects prefers-reduced-motion by jumping straight to the target.
+ * @param {Object} opts
+ * @param {number} opts.from
+ * @param {number} opts.to
+ * @param {number} [opts.velocity=0] - initial velocity in value-units/sec (e.g. px/s)
+ * @param {number} [opts.damping=1] - 1 = critically damped; <1 = overshoot/bounce (e.g. 0.8)
+ * @param {number} [opts.response=0.3] - seconds to reach target; lower = snappier
+ * @param {(value:number)=>void} opts.onUpdate
+ * @param {()=>void} [opts.onComplete]
+ * @returns {() => number} cancel function - stops the spring and returns the
+ *   live value at that instant, so an interrupting gesture can grab the
+ *   *presentation* value instead of jumping to the old target (apple-design §3).
+ */
+export function animateSpring({ from, to, velocity = 0, damping = 1, response = 0.3, onUpdate, onComplete }) {
+    let value = from;
+
+    if (prefersReducedMotion()) {
+        onUpdate(to);
+        if (onComplete) onComplete();
+        return () => to;
+    }
+
+    const angularFreq = (2 * Math.PI) / response;
+    const stiffness = angularFreq * angularFreq;
+    const dampingCoef = 2 * damping * angularFreq;
+
+    let v = velocity;
+    let cancelled = false;
+    let rafId = null;
+    let lastTime = performance.now();
+
+    function step(now) {
+        if (cancelled) return;
+        const dt = Math.min((now - lastTime) / 1000, 1 / 30); // clamp huge frame gaps (e.g. tab switch)
+        lastTime = now;
+
+        // Semi-implicit Euler integration of a damped spring: a = -k·x - c·v
+        const displacement = value - to;
+        const accel = -stiffness * displacement - dampingCoef * v;
+        v += accel * dt;
+        value += v * dt;
+
+        onUpdate(value);
+
+        if (Math.abs(value - to) < 0.5 && Math.abs(v) < 5) {
+            value = to;
+            onUpdate(to);
+            if (onComplete) onComplete();
+            return;
+        }
+        rafId = requestAnimationFrame(step);
+    }
+
+    rafId = requestAnimationFrame(step);
+
+    return () => {
+        cancelled = true;
+        if (rafId) cancelAnimationFrame(rafId);
+        return value;
+    };
+}
+
 // ========== FORM HELPERS ==========
 
 /**
@@ -228,6 +301,25 @@ export function clearFormValidation(form) {
 }
 
 // ========== IMAGE HELPERS ==========
+
+/**
+ * Resolves the URL to display a garment's photo - prefers the raw upload
+ * (higher quality) and falls back to the processed/masked version. Shared
+ * by every card renderer (settings grid, kiosk outfit/packing/wardrobe
+ * views) so there's a single place that knows the /images/raw|processed
+ * routing and the path-basename stripping.
+ * @param {Object} garment - needs raw_image_path and/or processed_image_path
+ * @returns {string|null}
+ */
+export function garmentImageUrl(garment) {
+    if (garment.raw_image_path) {
+        return `/images/raw/${garment.raw_image_path.replace(/^.*[\\\/]/, '')}`;
+    }
+    if (garment.processed_image_path) {
+        return `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\\/]/, '')}`;
+    }
+    return null;
+}
 
 /**
  * Create object URL for file preview

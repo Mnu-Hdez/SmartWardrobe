@@ -258,99 +258,82 @@ class TestColorExtractor:
 
 
 class TestIngestionPipeline:
-    """Test full garment ingestion pipeline."""
+    """Test the on-device SAM+CLIP+color ingestion pipeline."""
 
-    @patch("backend.vision.ingestion_pipeline.SAMSegmenter")
-    @patch("backend.vision.ingestion_pipeline.CLIPClassifier")
-    @patch("backend.vision.ingestion_pipeline.extract_colors_from_image")
-    def test_process_garment(
-        self,
-        mock_extract_colors,
-        mock_classifier_class,
-        mock_segmenter_class,
-        sample_image_path,
-        tmp_path,
-    ):
-        """Test complete garment processing pipeline."""
+    def test_analyze_image_shape(self, sample_image):
+        """analyze_image() must return every ImageAnalysisResponse field,
+        with type/pattern/formality/color coming from the classifier and
+        color extractor, and name/material/tags left null (this pipeline
+        can't guess those)."""
         from backend.vision.ingestion_pipeline import IngestionPipeline
 
-        # Setup mocks
-        mock_segmenter = Mock()
-        mock_segmenter_class.return_value = mock_segmenter
-
-        mock_mask = np.ones((224, 224), dtype=bool)
-        mock_masked_img = Image.new("RGB", (224, 224), "red")
-        mock_segmenter.segment_auto.return_value = (mock_mask, mock_masked_img, 0.9)
-
+        pipeline = IngestionPipeline()
         mock_classifier = Mock()
-        mock_classifier_class.return_value = mock_classifier
         mock_classifier.classify.return_value = {
             "type": "top",
             "type_confidence": 0.9,
-            "color": "red",
-            "color_confidence": 0.85,
             "pattern": "solid",
-            "pattern_confidence": 0.95,
-            "formality": "casual",
-            "formality_confidence": 0.8,
-            "season": "all_season",
-            "season_confidence": 0.9,
-            "overall_confidence": 0.88,
+            "pattern_confidence": 0.8,
+            "formality": 2,
+            "formality_confidence": 0.7,
         }
-
-        mock_extract_colors.return_value = {
-            "dominant_color_hex": "#FF0000",
-            "dominant_color_name": "red",
-            "palette": [{"hex": "#FF0000", "name": "red"}],
+        mock_color_extractor = Mock()
+        mock_color_extractor.get_dominant_color.return_value = {
+            "hex": "#ff0000", "rgb": (255, 0, 0), "name": "Red",
         }
+        pipeline._get_classifier = Mock(return_value=mock_classifier)
+        pipeline._get_color_extractor = Mock(return_value=mock_color_extractor)
 
-        # Mock database
-        with patch("backend.vision.ingestion_pipeline.get_db_session") as mock_db:
-            mock_session = Mock()
-            mock_db.return_value.__enter__ = Mock(return_value=mock_session)
-            mock_db.return_value.__exit__ = Mock(return_value=False)
+        result = pipeline.analyze_image(sample_image)
 
-            mock_repo = Mock()
-            mock_repo.create = Mock(return_value=Mock(id=1))
+        assert result["type"] == "top"
+        assert result["pattern"] == "solid"
+        assert result["formality"] == 2
+        assert result["color_hex"] == "#ff0000"
+        assert result["color_name"] == "Red"
+        assert result["name"] is None
+        assert result["material"] is None
+        assert result["tags"] == []
 
-            with patch(
-                "backend.vision.ingestion_pipeline.GarmentRepository", return_value=mock_repo
-            ):
-                pipeline = IngestionPipeline()
-                result = pipeline.process_garment(
-                    sample_image_path, name="Test Shirt", brand="Test Brand"
-                )
-
-                assert result["garment_id"] == 1
-                assert result["type"] == "top"
-                assert result["color"] == "red"
-                assert result["color_hex"] == "#FF0000"
-                mock_repo.create.assert_called_once()
-
-    def test_batch_process(self, tmp_path):
-        """Test batch processing multiple images."""
+    def test_segment_and_save(self, sample_image, tmp_path, monkeypatch):
+        """segment_and_save() must run segmentation, apply the mask, and
+        write a PNG under IMAGES_PROCESSED_GARMENTS_DIR, returning its
+        filename."""
+        from backend.core.config import settings
         from backend.vision.ingestion_pipeline import IngestionPipeline
 
-        # Create test images
-        img_dir = tmp_path / "garments"
-        img_dir.mkdir()
+        monkeypatch.setattr(settings, "IMAGES_PROCESSED_GARMENTS_DIR", tmp_path)
 
-        for i in range(3):
-            img = Image.new("RGB", (100, 100), color=["red", "blue", "green"][i])
-            img.save(img_dir / f"garment_{i}.jpg")
+        pipeline = IngestionPipeline()
+        mock_segmenter = Mock()
+        mock_segmenter.segment_auto.return_value = np.ones((224, 224), dtype="uint8")
+        mock_segmenter.apply_mask.return_value = sample_image.convert("RGBA")
+        pipeline._get_segmenter = Mock(return_value=mock_segmenter)
 
-        with patch.object(IngestionPipeline, "process_garment") as mock_process:
-            mock_process.side_effect = [
-                {"garment_id": 1, "name": "Garment 1"},
-                {"garment_id": 2, "name": "Garment 2"},
-                {"error": "Failed", "file": str(img_dir / "garment_2.jpg")},
-            ]
+        filename = pipeline.segment_and_save(sample_image, filename_hint="test-garment")
 
-            pipeline = IngestionPipeline()
-            results = pipeline.batch_process(str(img_dir))
+        assert filename == "test-garment.png"
+        assert (tmp_path / filename).exists()
 
-            assert len(results) == 3
-            assert mock_process.call_count == 3
+    def test_analyze_image_used_by_local_provider_fallback(self):
+        """LocalRulesProvider.analyze_image must fall back to color-only
+        analysis if the vision pipeline raises (e.g. missing weights),
+        instead of propagating the error to the caller."""
+        from backend.ai_providers.local import LocalRulesProvider
+
+        provider = LocalRulesProvider()
+        img = Image.new("RGB", (10, 10), color="blue")
+        import io
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG")
+
+        # No mocking of the vision pipeline - on a machine without the SAM/
+        # CLIP weights downloaded this will raise internally, and the
+        # fallback path must still return a well-formed result.
+        result = provider.analyze_image(buf.getvalue(), "image/jpeg")
+        assert "color_hex" in result
+        assert "type" in result
 
 
 # Integration tests for vision pipeline

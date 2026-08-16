@@ -401,16 +401,3 @@ class UserFeedbackRead(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-
-
-# Aliases for test compatibility
-PackingRequest = PackingPlanRequest
-PackingResponse = PackingPlanResponse
-OutfitRecommendationRequest = OutfitRecommendationRequest
-StyleRuleRead = StyleRuleResponse
-PatternType = Pattern
-
-# Backward compatibility aliases for tests
-UserFeedback = UserFeedbackCreate
-UserFeedbackRead = UserFeedbackRead
-OutfitGarmentLink = OutfitItemResponse

@@ -120,10 +120,6 @@ class OutfitItem(SQLModel, table=True):
     garment: Garment | None = Relationship(back_populates="outfit_items")
 
 
-# Backward compatibility alias for tests
-OutfitGarmentLink = OutfitItem
-
-
 class StyleRuleType(str, Enum):
     COLOR_HARMONY = "color_harmony"
     OCCASION_MATCH = "occasion_match"

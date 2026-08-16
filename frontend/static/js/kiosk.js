@@ -4,10 +4,12 @@
 import { api } from './api.js';
 import { t } from './i18n.js';
 import {
-    formatType, formatPattern, formatFormality, escapeHtml,
+    formatType, formatPattern, escapeHtml,
     showToast, openModal, closeModal, prefersReducedMotion, triggerHaptic,
-    staggerAnimation, observeReveal
+    staggerAnimation, observeReveal, garmentImageUrl, animateSpring
 } from './utils.js';
+import { createDial } from './dial.js';
+import { garmentCardBodyHTML } from './garments-render.js';
 
 /**
  * Kiosk UI Controller
@@ -32,6 +34,11 @@ class KioskUI {
 
         this.elements = {};
         this.resizeObserver = null;
+
+        // Generic drag-to-pick component (see dial.js) - one instance per
+        // dial, each reading its own values/selection/labels via dialSpec().
+        this.occasionDial = createDial(() => this.dialSpec('occasion'));
+        this.seasonDial = createDial(() => this.dialSpec('season'));
 
         this.init();
     }
@@ -148,16 +155,17 @@ class KioskUI {
             }
         });
 
-        // Occasion dial (left) + season dial (right)
-        this.renderDial('occasion');
-        this.renderDial('season');
-        this.bindDialGestures('occasion');
-        this.bindDialGestures('season');
+        // Occasion dial (left) + season dial (right) - generic component,
+        // see dial.js
+        this.occasionDial.render();
+        this.seasonDial.render();
+        this.occasionDial.bindGestures();
+        this.seasonDial.bindGestures();
 
         // Re-render dynamic labels when language changes
         document.addEventListener('i18n:changed', () => {
-            this.renderDial('occasion');
-            this.renderDial('season');
+            this.occasionDial.render();
+            this.seasonDial.render();
         });
     }
 
@@ -233,8 +241,8 @@ class KioskUI {
             this.state.selectedOccasion = outfit.occasion;
             this.state.selectedSeason = outfit.season;
             this.renderOutfit(outfit);
-            this.updateDialPosition('occasion', false);
-            this.updateDialPosition('season', false);
+            this.occasionDial.updatePosition(false);
+            this.seasonDial.updatePosition(false);
         } catch (error) {
             console.error('Error loading daily outfit, falling back to a fresh recommendation:', error);
             this.state.isLoading = false;
@@ -362,29 +370,16 @@ class KioskUI {
             outfit.items.forEach(item => {
                 const garment = item.garment;
                 if (!garment) return;
-                const colorHex = garment.color_hex || '#666666';
-                // Use raw_image_path for high-quality display - serve via /images/raw/
-                const imageUrl = garment.raw_image_path
-                    ? `/images/raw/${garment.raw_image_path.replace(/^.*[\\\/]/, '')}`
-                    : garment.processed_image_path
-                        ? `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\\/]/, '')}`
-                        : null;
 
                 html += `
                     <article class="garment-card" data-garment-id="${garment.id}" data-garment-type="${garment.type}">
-                        ${imageUrl
-                            ? `<img class="garment-image" src="${imageUrl}" alt="${escapeHtml(garment.name)}" loading="lazy">`
-                            : `<div class="garment-image" style="background-color: ${colorHex};"></div>`
-                        }
-                        <div class="garment-info">
-                            <h3 class="garment-name">${escapeHtml(garment.name)}</h3>
-                            <div class="garment-meta">
-                                <span class="tag tag-type">${formatType(garment.type)}</span>
-                                <span class="tag tag-color" style="--tag-color: ${colorHex}">${escapeHtml(garment.color_name)}</span>
-                                <span class="tag">${formatPattern(garment.pattern)}</span>
-                                <span class="tag">${formatFormality(garment.formality)}</span>
-                            </div>
-                        </div>
+                        ${garmentCardBodyHTML(garment, {
+                            headingTag: 'h3',
+                            imageClass: 'garment-image',
+                            infoClass: 'garment-info',
+                            nameClass: 'garment-name',
+                            metaClass: 'garment-meta',
+                        })}
                     </article>
                 `;
             });
@@ -542,18 +537,41 @@ class KioskUI {
         const cards = this.elements.outfitDisplay?.querySelectorAll('.garment-card');
         if (!cards) return;
 
+        const DISTANCE_THRESHOLD = 60;   // px - a slow, deliberate drag past this commits
+        const VELOCITY_THRESHOLD = 500;  // px/s - a fast flick commits even under the distance threshold
+        const EXIT_DISTANCE = 320;       // px - how far the card travels off-screen once committed
+
         cards.forEach(card => {
             let startX = 0;
             let dragging = false;
+            let history = []; // {t, x} samples for release velocity (apple-design §2)
+            let cancelSpring = null;
+
+            const velocityOf = () => {
+                if (history.length < 2) return 0;
+                const first = history[0];
+                const last = history[history.length - 1];
+                const dt = (last.t - first.t) / 1000;
+                return dt > 0 ? (last.x - first.x) / dt : 0;
+            };
 
             const onStart = (clientX) => {
                 if (this.state.isSwapping) return;
+                // Interrupt any in-flight return spring and grab from its
+                // live (presentation) value, not the old target - apple-design §3.
+                if (cancelSpring) {
+                    cancelSpring();
+                    cancelSpring = null;
+                }
                 dragging = true;
                 startX = clientX;
+                history = [{ t: performance.now(), x: clientX }];
                 card.classList.add('dragging');
             };
             const onMove = (clientX) => {
                 if (!dragging) return;
+                history.push({ t: performance.now(), x: clientX });
+                if (history.length > 5) history.shift();
                 const delta = clientX - startX;
                 card.style.transform = `translateX(${delta}px) rotate(${delta * 0.03}deg)`;
                 card.style.opacity = String(1 - Math.min(Math.abs(delta) / 240, 0.5));
@@ -561,16 +579,52 @@ class KioskUI {
             const onEnd = (clientX) => {
                 if (!dragging) return;
                 dragging = false;
-                card.classList.remove('dragging');
                 const delta = clientX - startX;
-                const threshold = 60;
+                const velocity = velocityOf();
+                const commits = Math.abs(delta) > DISTANCE_THRESHOLD || Math.abs(velocity) > VELOCITY_THRESHOLD;
+                // Direction from whichever signal is decisive - the velocity
+                // sign for a flick, the drag sign for a slow deliberate drag.
+                const direction = (Math.abs(velocity) > VELOCITY_THRESHOLD ? velocity : delta) < 0 ? 'next' : 'prev';
 
-                if (Math.abs(delta) > threshold) {
+                if (commits) {
                     triggerHaptic('light');
-                    this.handleGarmentSwipe(card, delta < 0 ? 'next' : 'prev');
+                    // Finish the exit immediately, continuing in the flick's
+                    // direction, instead of freezing the card while the network
+                    // call is in flight - the gesture always feels instantly
+                    // acknowledged (apple-design §1 Response).
+                    const sign = direction === 'next' ? -1 : 1;
+                    const exitX = sign * EXIT_DISTANCE;
+                    cancelSpring = animateSpring({
+                        from: delta,
+                        to: exitX,
+                        velocity,
+                        damping: 1.0,
+                        response: 0.25,
+                        onUpdate: (x) => {
+                            card.style.transform = `translateX(${x}px) rotate(${x * 0.03}deg)`;
+                            card.style.opacity = String(Math.max(0, 1 - Math.abs(x) / EXIT_DISTANCE));
+                        },
+                    });
+                    this.handleGarmentSwipe(card, direction);
                 } else {
-                    card.style.transform = '';
-                    card.style.opacity = '';
+                    // Rejected gesture: spring back to rest carrying the release
+                    // velocity - critically damped (no bounce), because this is
+                    // a cancellation, not a confirmation (apple-design §4).
+                    cancelSpring = animateSpring({
+                        from: delta,
+                        to: 0,
+                        velocity,
+                        damping: 1.0,
+                        response: 0.3,
+                        onUpdate: (x) => {
+                            card.style.transform = `translateX(${x}px) rotate(${x * 0.03}deg)`;
+                            card.style.opacity = String(1 - Math.min(Math.abs(x) / 240, 0.5));
+                        },
+                        onComplete: () => {
+                            card.classList.remove('dragging');
+                            cancelSpring = null;
+                        },
+                    });
                 }
             };
 
@@ -620,7 +674,7 @@ class KioskUI {
             showToast(`Error: ${error.message}`, 'error');
             card.style.transform = '';
             card.style.opacity = '';
-            card.classList.remove('swapping');
+            card.classList.remove('dragging', 'swapping');
         } finally {
             this.state.isSwapping = false;
         }
@@ -630,13 +684,13 @@ class KioskUI {
 
     selectOccasion(occasion, options = {}) {
         this.state.selectedOccasion = occasion;
-        this.updateDialPosition('occasion', options.animate !== false);
+        this.occasionDial.updatePosition(options.animate !== false, options.velocity || 0);
         this.loadOutfit();
     }
 
     selectSeason(season, options = {}) {
         this.state.selectedSeason = season;
-        this.updateDialPosition('season', options.animate !== false);
+        this.seasonDial.updatePosition(options.animate !== false, options.velocity || 0);
         this.loadOutfit();
     }
 
@@ -688,105 +742,6 @@ class KioskUI {
                 label: (v) => t('season.' + v),
                 select: (v, opts) => this.selectSeason(v, opts)
             };
-    }
-
-    renderDial(kind) {
-        const spec = this.dialSpec(kind);
-        if (!spec.track) return;
-
-        spec.track.innerHTML = spec.values.map(value => `
-            <div class="side-dial-item ${value === spec.selected ? 'active' : ''}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${spec.icon(value)}</svg>
-                <span>${spec.label(value)}</span>
-            </div>
-        `).join('');
-
-        this.updateDialPosition(kind, false);
-    }
-
-    updateDialPosition(kind, animate = true) {
-        const spec = this.dialSpec(kind);
-        const { track, dial, values, selected } = spec;
-        if (!track || !dial) return;
-
-        const index = values.indexOf(selected);
-        const height = dial.clientHeight || 1;
-
-        track.querySelectorAll('.side-dial-item').forEach(item => {
-            item.style.height = `${height}px`;
-        });
-
-        track.classList.toggle('dragging', !animate);
-        track.style.transform = `translateY(${-index * height}px)`;
-
-        track.querySelectorAll('.side-dial-item').forEach((item, i) => {
-            item.classList.toggle('active', i === index);
-        });
-    }
-
-    bindDialGestures(kind) {
-        const spec = this.dialSpec(kind);
-        const { dial: container, track } = spec;
-        if (!container || !track) return;
-
-        let startY = 0;
-        let dragging = false;
-        let height = 0;
-        let index = 0;
-
-        const currentValues = () => this.dialSpec(kind).values;
-        const currentSelected = () => this.dialSpec(kind).selected;
-
-        const onStart = (clientY) => {
-            dragging = true;
-            startY = clientY;
-            height = container.clientHeight || 1;
-            index = currentValues().indexOf(currentSelected());
-            track.classList.add('dragging');
-        };
-        const onMove = (clientY) => {
-            if (!dragging) return;
-            const delta = clientY - startY;
-            track.style.transform = `translateY(${-index * height + delta}px)`;
-        };
-        const onEnd = (clientY) => {
-            if (!dragging) return;
-            dragging = false;
-            track.classList.remove('dragging');
-            const delta = clientY - startY;
-            const threshold = height * 0.18;
-            const values = currentValues();
-
-            if (delta <= -threshold && index < values.length - 1) {
-                triggerHaptic('light');
-                this.dialSpec(kind).select(values[index + 1]);
-            } else if (delta >= threshold && index > 0) {
-                triggerHaptic('light');
-                this.dialSpec(kind).select(values[index - 1]);
-            } else {
-                this.updateDialPosition(kind, true);
-            }
-        };
-
-        container.addEventListener('touchstart', (e) => onStart(e.touches[0].clientY), { passive: true });
-        container.addEventListener('touchmove', (e) => onMove(e.touches[0].clientY), { passive: true });
-        container.addEventListener('touchend', (e) => onEnd(e.changedTouches[0].clientY), { passive: true });
-
-        container.addEventListener('pointerdown', (e) => {
-            if (e.pointerType === 'touch') return;
-            container.setPointerCapture(e.pointerId);
-            onStart(e.clientY);
-        });
-        container.addEventListener('pointermove', (e) => {
-            if (e.pointerType === 'touch') return;
-            onMove(e.clientY);
-        });
-        container.addEventListener('pointerup', (e) => {
-            if (e.pointerType === 'touch') return;
-            onEnd(e.clientY);
-        });
-
-        window.addEventListener('resize', () => this.updateDialPosition(kind, false));
     }
 
     // ========== STATS ==========
@@ -931,11 +886,7 @@ class KioskUI {
                 const garment = item.garment;
                 const versatility = Math.round((item.versatility_score || 0) * 100);
                 const colorHex = garment.color_hex || '#666666';
-                const imageUrl = garment.raw_image_path
-                    ? `/images/raw/${garment.raw_image_path.replace(/^.*[\\\/]/, '')}`
-                    : garment.processed_image_path
-                        ? `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\\/]/, '')}`
-                        : null;
+                const imageUrl = garmentImageUrl(garment);
 
                 html += `
                     <div class="packing-item-row">
@@ -1015,28 +966,9 @@ class KioskUI {
     }
 
     createWardrobeCard(garment) {
-        const colorHex = garment.color_hex || '#666666';
-        const imageUrl = garment.raw_image_path
-            ? `/images/raw/${garment.raw_image_path.replace(/^.*[\\\/]/, '')}`
-            : garment.processed_image_path
-                ? `/images/processed/garments/${garment.processed_image_path.replace(/^.*[\\\/]/, '')}`
-                : null;
-
         return `
             <article class="wardrobe-item" data-garment-id="${garment.id}">
-                ${imageUrl
-                    ? `<img class="wardrobe-item-image" src="${imageUrl}" alt="${escapeHtml(garment.name)}" loading="lazy">`
-                    : `<div class="wardrobe-item-image" style="background-color: ${colorHex};"></div>`
-                }
-                <div class="wardrobe-item-info">
-                    <h4 class="wardrobe-item-name">${escapeHtml(garment.name)}</h4>
-                    <div class="wardrobe-item-meta">
-                        <span class="tag tag-type">${formatType(garment.type)}</span>
-                        <span class="tag tag-color" style="--tag-color: ${colorHex}">${escapeHtml(garment.color_name)}</span>
-                        <span class="tag">${formatPattern(garment.pattern)}</span>
-                        <span class="tag">${formatFormality(garment.formality)}</span>
-                    </div>
-                </div>
+                ${garmentCardBodyHTML(garment)}
             </article>
         `;
     }

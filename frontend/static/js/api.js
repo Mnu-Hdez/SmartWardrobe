@@ -178,6 +178,50 @@ class ApiClient {
             headers: {}
         });
     }
+
+    // ========== EXPORT / IMPORT ==========
+
+    /**
+     * Downloads the whole wardrobe (metadata + photos) as a .zip.
+     * Bypasses request() since the response is a binary file, not JSON -
+     * triggers the browser's native save/download UI directly.
+     */
+    async exportGarments() {
+        const url = `${this.baseUrl}/garments/export`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+            throw new ApiError(response.status, extractErrorMessage(errorData));
+        }
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        const filename = match ? match[1] : 'smart-wardrobe-export.zip';
+
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
+     * Uploads a .zip previously produced by exportGarments() and imports
+     * every garment inside it - an additive merge, always creating new
+     * records (never overwrites or dedupes against what's already there).
+     */
+    async importGarments(file) {
+        const formData = new FormData();
+        formData.set('file', file);
+        return this.request('/garments/import', {
+            method: 'POST',
+            body: formData,
+            headers: {}
+        });
+    }
     
     // ========== OUTFITS ==========
     
